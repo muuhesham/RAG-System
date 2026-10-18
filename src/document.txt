@@ -1,0 +1,5 @@
+Node.js is a JavaScript runtime.
+Express is a framework used to build web APIs.
+Supabase provides a PostgreSQL database.
+LangChain helps developers build applications with language models.
+Embeddings represent the meaning of text as vectors.
