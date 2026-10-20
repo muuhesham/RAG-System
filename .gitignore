@@ -2,3 +2,5 @@
 node_modules/
 dist/
 .vscode/
+src/documents/*.md
+src/documents/*.txt
