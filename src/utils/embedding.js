@@ -7,4 +7,3 @@ export const embedding = () => {
     model: "gemini-embedding-001",
   });
 };
-

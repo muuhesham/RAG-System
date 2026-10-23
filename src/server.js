@@ -1,16 +1,12 @@
 import express from "express";
-import {
-  PORT,
-  SUPABASE_URL,
-  SUPABASE_SECRET_KEY,
-} from "./env.js";
-import { chatModel } from "./ai-model.js";
+import { PORT, SUPABASE_URL, SUPABASE_SECRET_KEY } from "./env.js";
+import { chatModel } from "./utils/ai-model.js";
 import { supabaseClient } from "./db.js";
-import { embedding } from "./embedding.js";
+import { embedding } from "./utils/embedding.js";
 import { SupabaseVectorStore } from "@langchain/community/vectorstores/supabase";
-import { prompt } from "./prompt.js";
+import { prompt } from "./utils/prompt.js";
 import { documentsPath, ingestDocument } from "./splitter.js";
-import { upload } from "./multer.js";
+import { upload } from "./utils/multer.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -39,7 +35,9 @@ app.post("/documents", upload.array("documents", 20), async (req, res) => {
     }
 
     await fs.mkdir(documentsPath, { recursive: true });
-    const existingDocuments = (await fs.readdir(documentsPath)).map((fileName) => fileName.toLowerCase());
+    const existingDocuments = (await fs.readdir(documentsPath)).map(
+      (fileName) => fileName.toLowerCase(),
+    );
 
     for (const file of req.files) {
       const fileName = path.basename(file.originalname).toLowerCase();
@@ -101,9 +99,9 @@ app.get("/documents", async (_req, res) => {
 app.delete("/documents/:fileName", async (req, res) => {
   try {
     const name = req.params.fileName.toLocaleLowerCase();
-    if(!name || typeof name !== 'string'){
-      throw new Error('file name must be string.')
-    } 
+    if (!name || typeof name !== "string") {
+      throw new Error("file name must be string.");
+    }
     const fileName = path.basename(name);
     const filePath = path.join(documentsPath, fileName);
     await fs.unlink(filePath);

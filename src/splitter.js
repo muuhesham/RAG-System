@@ -1,9 +1,9 @@
-import { SUPABASE_URL, SUPABASE_SECRET_KEY } from "./env.js";
+import { SUPABASE_URL, SUPABASE_SECRET_KEY } from "./utils/env.js";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { SupabaseVectorStore } from "@langchain/community/vectorstores/supabase";
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
-import { supabaseClient } from "./db.js";
-import { embedding } from "./embedding.js";
+import { supabaseClient } from "./utils/db.js";
+import { embedding } from "./utils/embedding.js";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import path from "node:path";
@@ -73,4 +73,3 @@ export async function ingestDocument(fileName) {
 
 //   console.log(`Documents stored successfully. Total chunks: ${totalChunks}`);
 // }
-
