@@ -5,27 +5,17 @@ import {
   SUPABASE_SECRET_KEY,
 } from "./env.js";
 import { chatModel } from "./ai-model.js";
-import {supabaseClient} from "./db.js";
-import {embedding} from "./embedding.js";
+import { supabaseClient } from "./db.js";
+import { embedding } from "./embedding.js";
 import { SupabaseVectorStore } from "@langchain/community/vectorstores/supabase";
 import { prompt } from "./prompt.js";
 import { documentsPath, ingestDocument } from "./splitter.js";
-import multer from "multer";
+import { upload } from "./multer.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 
 const app = express();
 app.use(express.json());
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (_req, file, callback) => {
-    const allowedExtensions = [".txt", ".md"];
-    const extension = path.extname(file.originalname).toLowerCase();
-    callback(null, allowedExtensions.includes(extension));
-  },
-});
 
 const supabase = supabaseClient(SUPABASE_URL, SUPABASE_SECRET_KEY);
 const embeddings = embedding();
@@ -36,31 +26,107 @@ const vectorStore = new SupabaseVectorStore(embeddings, {
   queryName: "match_documents",
 });
 
-app.post("/documents", upload.single("document"), async (req, res) => {
+app.post("/documents", upload.array("documents", 20), async (req, res) => {
+  const savedFileNames = [];
+  const indexedFileNames = [];
+  const uploadedDocuments = [];
+
   try {
-    if (!req.file) {
+    if (!req.files?.length) {
       return res.status(400).json({
-        message: "Please upload a .txt or .md file using the 'document' field.",
+        message: "Please upload at least one file using the 'documents' field.",
       });
     }
 
-    const fileName = path.basename(req.file.originalname);
     await fs.mkdir(documentsPath, { recursive: true });
-    await fs.writeFile(path.join(documentsPath, fileName), req.file.buffer);
+    const existingDocuments = (await fs.readdir(documentsPath)).map((fileName) => fileName.toLowerCase());
 
-    const chunks = await ingestDocument(fileName);
+    for (const file of req.files) {
+      const fileName = path.basename(file.originalname).toLowerCase();
+
+      if (existingDocuments.includes(fileName)) {
+        return res.status(409).json({
+          message: `Document already exists: ${fileName}`,
+        });
+      }
+
+      await fs.writeFile(path.join(documentsPath, fileName), file.buffer);
+      savedFileNames.push(fileName);
+      existingDocuments.push(fileName);
+      const chunks = await ingestDocument(fileName);
+      indexedFileNames.push(fileName);
+      uploadedDocuments.push({ fileName, chunks });
+    }
 
     res.status(201).json({
-      message: "Document uploaded and indexed successfully.",
-      fileName,
-      chunks,
+      message: "Documents uploaded successfully!",
+      documents: uploadedDocuments,
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Could not upload and index the document." });
+
+    for (const fileName of savedFileNames) {
+      await fs.rm(path.join(documentsPath, fileName), { force: true });
+    }
+
+    for (const fileName of indexedFileNames) {
+      await supabase
+        .from("documents")
+        .delete()
+        .contains("metadata", { source: fileName });
+    }
+
+    res.status(500).json({ error: "Could not upload the document." });
   }
 });
 
+app.get("/documents", async (_req, res) => {
+  try {
+    const documents = await fs.readdir(documentsPath);
+
+    res.json({
+      count: documents.length,
+      documents,
+    });
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      return res.json({ count: 0, documents: [] });
+    }
+
+    console.error(err);
+    res.status(500).json({ error: "Could not list the documents." });
+  }
+});
+
+app.delete("/documents/:fileName", async (req, res) => {
+  try {
+    const name = req.params.fileName.toLocaleLowerCase();
+    if(!name || typeof name !== 'string'){
+      throw new Error('file name must be string.')
+    } 
+    const fileName = path.basename(name);
+    const filePath = path.join(documentsPath, fileName);
+    await fs.unlink(filePath);
+
+    const { error } = await supabase
+      .from("documents")
+      .delete()
+      .contains("metadata", { source: fileName });
+
+    if (error) {
+      throw error;
+    }
+
+    res.json({ message: "Document deleted successfully!", fileName });
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      return res.status(404).json({ message: "Document not found." });
+    }
+
+    console.error(err);
+    res.status(500).json({ error: "Could not delete the document." });
+  }
+});
 
 app.post("/chat", async (req, res) => {
   try {
