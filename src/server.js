@@ -1,12 +1,13 @@
 import express from "express";
 import { PORT, SUPABASE_URL, SUPABASE_SECRET_KEY } from "./env.js";
-import { chatModel } from "./utils/ai-model.js";
+import { llm } from "./utils/llm.js";
 import { supabaseClient } from "./db.js";
 import { embedding } from "./utils/embedding.js";
 import { SupabaseVectorStore } from "@langchain/community/vectorstores/supabase";
-import { prompt } from "./utils/prompt.js";
+import { resposnePrompt } from "./utils/prompts/responsePrompt.js";
 import { documentsPath, ingestDocument } from "./splitter.js";
 import { upload } from "./utils/multer.js";
+import { transformationPrompt } from "./utils/prompts/transformationPrompt.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -134,10 +135,16 @@ app.post("/chat", async (req, res) => {
         message: "please provide a valid question!",
       });
     }
-    const relevantDocs = await vectorStore.similaritySearch(question, 4);
+    const rewriteMessage = await transformationPrompt.invoke({ question });
+    const rewriteResponse = await llm.invoke(rewriteMessage);
+    const transfromationQuestion = rewriteResponse.content.toString().trim();
+    const relevantDocs = await vectorStore.similaritySearch(transfromationQuestion, 4);
     const context = relevantDocs.map((doc) => doc.pageContent).join("\n\n");
-    const messages = await prompt.invoke({ context, question });
-    const response = await chatModel.invoke(messages);
+    const messages = await resposnePrompt.invoke({
+      context,
+      transfromationQuestion,
+    });
+    const response = await llm.invoke(messages);
 
     res.json({
       answer: response.content,
