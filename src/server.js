@@ -8,6 +8,7 @@ import { resposnePrompt } from "./utils/prompts/responsePrompt.js";
 import { documentsPath, ingestDocument } from "./splitter.js";
 import { upload } from "./utils/multer.js";
 import { transformationPrompt } from "./utils/prompts/transformationPrompt.js";
+import { InMemoryChatMessageHistory } from "@langchain/core/chat_history";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -135,16 +136,23 @@ app.post("/chat", async (req, res) => {
         message: "please provide a valid question!",
       });
     }
-    const rewriteMessage = await transformationPrompt.invoke({ question });
+    const historyStore = new InMemoryChatMessageHistory();
+    const allMessages = await historyStore.getMessages();
+    const chatHistory = allMessages.slice(-5);
+    const rewriteMessage = await transformationPrompt.invoke({ chatHistory,
+      question });
     const rewriteResponse = await llm.invoke(rewriteMessage);
     const transfromationQuestion = rewriteResponse.content.toString().trim();
     const relevantDocs = await vectorStore.similaritySearch(transfromationQuestion, 4);
     const context = relevantDocs.map((doc) => doc.pageContent).join("\n\n");
     const messages = await resposnePrompt.invoke({
       context,
-      transfromationQuestion,
+      chatHistory,
+      question: transfromationQuestion,
     });
     const response = await llm.invoke(messages);
+    await historyStore.addUserMessage(transfromationQuestion);
+    await historyStore.addAIMessage(response.content.toString());
 
     res.json({
       answer: response.content,
