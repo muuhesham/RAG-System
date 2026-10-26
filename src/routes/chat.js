@@ -4,13 +4,13 @@ import { llm } from "../utils/llm.js";
 import { supabaseClient } from "../utils/db.js";
 import { embedding } from "../utils/embedding.js";
 import { SupabaseVectorStore } from "@langchain/community/vectorstores/supabase";
-import { resposnePrompt } from "../utils/prompts/responsePrompt.js";
+import { responsePrompt } from "../utils/prompts/responsePrompt.js";
 import { transformationPrompt } from "../utils/prompts/transformationPrompt.js";
 import { createRateLimiter } from "../utils/rate-limit.js";
 import {
   deleteSessionHistory,
   getSessionHistory,
-} from "../utils/converstion-memory.js";
+} from "../utils/conversation-memory.js";
 
 const router = express.Router();
 const supabase = supabaseClient(SUPABASE_URL, SUPABASE_SECRET_KEY);
@@ -49,8 +49,14 @@ router.delete(
 
 router.post("/", createRateLimiter(5), async (req, res) => {
   try {
+    if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+      return res.status(400).json({
+        message: "Please provide a JSON object with question and sessionId.",
+      });
+    }
+
     const { question, sessionId } = req.body;
-    if (!question || typeof question !== "string") {
+    if (typeof question !== "string" || question.trim().length === 0) {
       return res.status(400).json({
         message: "please provide a valid question!",
       });
@@ -67,26 +73,31 @@ router.post("/", createRateLimiter(5), async (req, res) => {
 
     const historyStore = getSessionHistory(sessionId.trim());
     const allMessages = await historyStore.getMessages();
-    const chatHistory = allMessages.slice(-6);
+    const chatHistory = allMessages.slice(-10);
     const rewriteMessage = await transformationPrompt.invoke({
       chatHistory,
       question,
     });
     const rewriteResponse = await llm.invoke(rewriteMessage);
-    const transfromationQuestion = rewriteResponse.content.toString().trim();
+    const transformationQuestion = rewriteResponse.content.toString().trim();
     const relevantDocs = await vectorStore.similaritySearch(
-      transfromationQuestion,
+      transformationQuestion,
       4,
     );
     const context = relevantDocs.map((doc) => doc.pageContent).join("\n\n");
-    const messages = await resposnePrompt.invoke({
+    const messages = await responsePrompt.invoke({
       context,
       chatHistory,
-      question: transfromationQuestion,
+      question: transformationQuestion,
     });
     const response = await llm.invoke(messages);
-    await historyStore.addUserMessage(transfromationQuestion);
+    await historyStore.addUserMessage(question);
     await historyStore.addAIMessage(response.content.toString());
+    const updatedMessages = await historyStore.getMessages();
+    if (updatedMessages.length > 10) {
+      await historyStore.clear();
+      await historyStore.addMessages(updatedMessages.slice(-10));
+    }
 
     res.json({
       answer: response.content,

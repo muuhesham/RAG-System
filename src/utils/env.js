@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 
 const result = dotenv.config();
 
-if (result.error) {
+if (result.error && result.error.code !== "ENOENT") {
   throw new Error(`Could not load environment variables: ${result.error.message}`);
 }
 
