@@ -17,6 +17,6 @@ Rules:
 {context}
 </context>`,
   ],
-  new MessagesPlaceholder("chatHistroy"),
+  new MessagesPlaceholder("chatHistory"),
   ["human", "{question}"],
 ]);
