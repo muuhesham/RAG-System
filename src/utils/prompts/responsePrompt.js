@@ -1,4 +1,4 @@
-import { ChatPromptTemplate } from "@langchain/core/prompts";
+import { ChatPromptTemplate, MessagesPlaceholder } from "@langchain/core/prompts";
 
 export const resposnePrompt = ChatPromptTemplate.fromMessages([
   [
@@ -17,5 +17,6 @@ Rules:
 {context}
 </context>`,
   ],
+  new MessagesPlaceholder("chatHistroy"),
   ["human", "{question}"],
 ]);

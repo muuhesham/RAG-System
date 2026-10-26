@@ -1,4 +1,4 @@
-import { ChatPromptTemplate } from "@langchain/core/prompts";
+import { ChatPromptTemplate, MessagesPlaceholder } from "@langchain/core/prompts";
 
 export const transformationPrompt = ChatPromptTemplate.fromMessages([
   [
@@ -8,5 +8,6 @@ Fix any grammar, spelling, or punctuation errors in the user's question, and mak
 CRITICAL: Keep the rewritten question in the EXACT same language the user intended.
 Do NOT answer the question. Return ONLY the corrected question.`,
   ],
+  new MessagesPlaceholder("chatHistory"),
   ["human", "{question}"],
 ]);
