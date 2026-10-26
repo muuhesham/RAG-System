@@ -6,6 +6,7 @@ import { embedding } from "../utils/embedding.js";
 import { SupabaseVectorStore } from "@langchain/community/vectorstores/supabase";
 import { resposnePrompt } from "../utils/prompts/responsePrompt.js";
 import { transformationPrompt } from "../utils/prompts/transformationPrompt.js";
+import { createRateLimiter } from "../utils/rate-limit.js";
 import { InMemoryChatMessageHistory } from "@langchain/core/chat_history";
 
 const router = express.Router();
@@ -18,7 +19,7 @@ const vectorStore = new SupabaseVectorStore(embeddings, {
   queryName: "match_documents",
 });
 
-router.post("/", async (req, res) => {
+router.post("/", createRateLimiter(5), async (req, res) => {
   try {
     const { question } = req.body;
     if (!question || typeof question !== "string") {

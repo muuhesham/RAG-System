@@ -3,69 +3,75 @@ import { SUPABASE_SECRET_KEY, SUPABASE_URL } from "../utils/env.js";
 import { supabaseClient } from "../utils/db.js";
 import { documentsPath, ingestDocument } from "../splitter.js";
 import { upload } from "../utils/multer.js";
+import { createRateLimiter } from "../utils/rate-limit.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 
 const router = express.Router();
 const supabase = supabaseClient(SUPABASE_URL, SUPABASE_SECRET_KEY);
 
-router.post("/", upload.array("documents", 20), async (req, res) => {
-  const savedFileNames = [];
-  const indexedFileNames = [];
-  const uploadedDocuments = [];
+router.post(
+  "/",
+  createRateLimiter(10),
+  upload.array("documents", 20),
+  async (req, res) => {
+    const savedFileNames = [];
+    const indexedFileNames = [];
+    const uploadedDocuments = [];
 
-  try {
-    if (!req.files?.length) {
-      return res.status(400).json({
-        message: "Please upload at least one file using the 'documents' field.",
-      });
-    }
-
-    await fs.mkdir(documentsPath, { recursive: true });
-    const existingDocuments = (await fs.readdir(documentsPath)).map(
-      (fileName) => fileName.toLowerCase(),
-    );
-
-    for (const file of req.files) {
-      const fileName = path.basename(file.originalname).toLowerCase();
-
-      if (existingDocuments.includes(fileName)) {
-        return res.status(409).json({
-          message: `Document already exists: ${fileName}`,
+    try {
+      if (!req.files?.length) {
+        return res.status(400).json({
+          message: "Please upload at least one file using the 'documents' field.",
         });
       }
 
-      await fs.writeFile(path.join(documentsPath, fileName), file.buffer);
-      savedFileNames.push(fileName);
-      existingDocuments.push(fileName);
-      const chunks = await ingestDocument(fileName);
-      indexedFileNames.push(fileName);
-      uploadedDocuments.push({ fileName, chunks });
+      await fs.mkdir(documentsPath, { recursive: true });
+      const existingDocuments = (await fs.readdir(documentsPath)).map(
+        (fileName) => fileName.toLowerCase(),
+      );
+
+      for (const file of req.files) {
+        const fileName = path.basename(file.originalname).toLowerCase();
+
+        if (existingDocuments.includes(fileName)) {
+          return res.status(409).json({
+            message: `Document already exists: ${fileName}`,
+          });
+        }
+
+        await fs.writeFile(path.join(documentsPath, fileName), file.buffer);
+        savedFileNames.push(fileName);
+        existingDocuments.push(fileName);
+        const chunks = await ingestDocument(fileName);
+        indexedFileNames.push(fileName);
+        uploadedDocuments.push({ fileName, chunks });
+      }
+
+      res.status(201).json({
+        message: "Documents uploaded successfully!",
+        documents: uploadedDocuments,
+      });
+    } catch (err) {
+      console.error(err);
+
+      for (const fileName of savedFileNames) {
+        await fs.rm(path.join(documentsPath, fileName), { force: true });
+      }
+
+      for (const fileName of indexedFileNames) {
+        await supabase
+          .from("documents")
+          .delete()
+          .contains("metadata", { source: fileName });
+      }
+
+      res.status(500).json({ error: "Could not upload the document." });
     }
+  },
+);
 
-    res.status(201).json({
-      message: "Documents uploaded successfully!",
-      documents: uploadedDocuments,
-    });
-  } catch (err) {
-    console.error(err);
-
-    for (const fileName of savedFileNames) {
-      await fs.rm(path.join(documentsPath, fileName), { force: true });
-    }
-
-    for (const fileName of indexedFileNames) {
-      await supabase
-        .from("documents")
-        .delete()
-        .contains("metadata", { source: fileName });
-    }
-
-    res.status(500).json({ error: "Could not upload the document." });
-  }
-});
-
-router.get("/", async (_req, res) => {
+router.get("/", createRateLimiter(20), async (_req, res) => {
   try {
     const documents = await fs.readdir(documentsPath);
 
@@ -83,7 +89,7 @@ router.get("/", async (_req, res) => {
   }
 });
 
-router.delete("/:fileName", async (req, res) => {
+router.delete("/:fileName", createRateLimiter(10), async (req, res) => {
   try {
     const name = req.params.fileName.toLocaleLowerCase();
     if (!name || typeof name !== "string") {
