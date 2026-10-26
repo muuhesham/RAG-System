@@ -7,7 +7,10 @@ import { SupabaseVectorStore } from "@langchain/community/vectorstores/supabase"
 import { resposnePrompt } from "../utils/prompts/responsePrompt.js";
 import { transformationPrompt } from "../utils/prompts/transformationPrompt.js";
 import { createRateLimiter } from "../utils/rate-limit.js";
-import { InMemoryChatMessageHistory } from "@langchain/core/chat_history";
+import {
+  deleteSessionHistory,
+  getSessionHistory,
+} from "../utils/converstion-memory.js";
 
 const router = express.Router();
 const supabase = supabaseClient(SUPABASE_URL, SUPABASE_SECRET_KEY);
@@ -19,18 +22,52 @@ const vectorStore = new SupabaseVectorStore(embeddings, {
   queryName: "match_documents",
 });
 
+router.delete(
+  "/history/:sessionId",
+  createRateLimiter(5),
+  (req, res) => {
+    const { sessionId } = req.params;
+    if (
+      !sessionId ||
+      sessionId.trim().length === 0 ||
+      sessionId.trim().length > 128
+    ) {
+      return res.status(400).json({
+        message: "Please provide a valid sessionId.",
+      });
+    }
+
+    if (!deleteSessionHistory(sessionId.trim())) {
+      return res.status(404).json({
+        message: "Conversation history not found.",
+      });
+    }
+
+    res.json({ message: "Conversation history deleted successfully." });
+  },
+);
+
 router.post("/", createRateLimiter(5), async (req, res) => {
   try {
-    const { question } = req.body;
+    const { question, sessionId } = req.body;
     if (!question || typeof question !== "string") {
       return res.status(400).json({
         message: "please provide a valid question!",
       });
     }
+    if (
+      typeof sessionId !== "string" ||
+      sessionId.trim().length === 0 ||
+      sessionId.trim().length > 128
+    ) {
+      return res.status(400).json({
+        message: "Please provide a valid sessionId.",
+      });
+    }
 
-    const historyStore = new InMemoryChatMessageHistory();
+    const historyStore = getSessionHistory(sessionId.trim());
     const allMessages = await historyStore.getMessages();
-    const chatHistory = allMessages.slice(-5);
+    const chatHistory = allMessages.slice(-6);
     const rewriteMessage = await transformationPrompt.invoke({
       chatHistory,
       question,
