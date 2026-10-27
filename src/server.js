@@ -2,9 +2,11 @@ import express from "express";
 import { PORT } from "./utils/env.js";
 import chatRouter from "./routes/chat.js";
 import documentsRouter from "./routes/documents.js";
+import { corsOptions } from "./utils/cors.js";
 
 const app = express();
 
+app.use(corsOptions);
 app.use(express.json());
 app.use("/documents", documentsRouter);
 app.use("/chat", chatRouter);
