@@ -1,6 +1,6 @@
 import { ChatPromptTemplate, MessagesPlaceholder } from "@langchain/core/prompts";
 
-export const resposnePrompt = ChatPromptTemplate.fromMessages([
+export const responsePrompt = ChatPromptTemplate.fromMessages([
   [
     "system",
     `You are a helpful and accurate AI assistant.
