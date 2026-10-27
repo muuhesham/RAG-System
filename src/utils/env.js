@@ -25,3 +25,5 @@ if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
 export const AI_API_KEY = requiredEnv('AI_API_KEY');
 export const SUPABASE_URL = requiredEnv('SUPABASE_URL');
 export const SUPABASE_SECRET_KEY = requiredEnv('SUPABASE_SECRET_KEY');
+export const FRONTEND_URL = process.env.FRONTEND_URL ?? "http://localhost:5173"
+
