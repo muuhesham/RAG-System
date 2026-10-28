@@ -6,6 +6,12 @@ import { embedding } from "../utils/embedding.js";
 import { SupabaseVectorStore } from "@langchain/community/vectorstores/supabase";
 import { responsePrompt } from "../utils/prompts/responsePrompt.js";
 import { transformationPrompt } from "../utils/prompts/transformationPrompt.js";
+import {
+  answerSchema,
+  chatRequestSchema,
+  correctedQuestionSchema,
+  sessionIdParamsSchema,
+} from "../utils/validation.js";
 import { createRateLimiter } from "../utils/rate-limit.js";
 import {
   deleteSessionHistory,
@@ -26,18 +32,15 @@ router.delete(
   "/history/:sessionId",
   createRateLimiter(5),
   (req, res) => {
-    const { sessionId } = req.params;
-    if (
-      !sessionId ||
-      sessionId.trim().length === 0 ||
-      sessionId.trim().length > 128
-    ) {
+    const paramsResult = sessionIdParamsSchema.safeParse(req.params);
+    if (!paramsResult.success) {
       return res.status(400).json({
         message: "Please provide a valid sessionId.",
       });
     }
+    const { sessionId } = paramsResult.data;
 
-    if (!deleteSessionHistory(sessionId.trim())) {
+    if (!deleteSessionHistory(sessionId)) {
       return res.status(404).json({
         message: "Conversation history not found.",
       });
@@ -55,31 +58,24 @@ router.post("/", createRateLimiter(5), async (req, res) => {
       });
     }
 
-    const { question, sessionId } = req.body;
-    if (typeof question !== "string" || question.trim().length === 0) {
+    const bodyResult = chatRequestSchema.safeParse(req.body);
+    if (!bodyResult.success) {
       return res.status(400).json({
-        message: "please provide a valid question!",
+        message: "Please provide a valid question and sessionId.",
       });
     }
-    if (
-      typeof sessionId !== "string" ||
-      sessionId.trim().length === 0 ||
-      sessionId.trim().length > 128
-    ) {
-      return res.status(400).json({
-        message: "Please provide a valid sessionId.",
-      });
-    }
-
-    const historyStore = getSessionHistory(sessionId.trim());
+    const { question, sessionId } = bodyResult.data;
+    const historyStore = getSessionHistory(sessionId);
     const allMessages = await historyStore.getMessages();
     const chatHistory = allMessages.slice(-10);
     const rewriteMessage = await transformationPrompt.invoke({
       chatHistory,
       question,
     });
-    const rewriteResponse = await llm.invoke(rewriteMessage);
-    const transformationQuestion = rewriteResponse.content.toString().trim();
+    const structuredTransformationLlm =
+      llm.withStructuredOutput(correctedQuestionSchema);
+    const rewriteResponse = await structuredTransformationLlm.invoke(rewriteMessage);
+    const transformationQuestion = rewriteResponse.correctedQuestion;
     const relevantDocs = await vectorStore.similaritySearch(
       transformationQuestion,
       4,
@@ -90,9 +86,11 @@ router.post("/", createRateLimiter(5), async (req, res) => {
       chatHistory,
       question: transformationQuestion,
     });
-    const response = await llm.invoke(messages);
+    const structuredAnswerLlm = llm.withStructuredOutput(answerSchema);
+    const response = await structuredAnswerLlm.invoke(messages);
+    const answer = response.answer;
     await historyStore.addUserMessage(question);
-    await historyStore.addAIMessage(response.content.toString());
+    await historyStore.addAIMessage(answer);
     const updatedMessages = await historyStore.getMessages();
     if (updatedMessages.length > 10) {
       await historyStore.clear();
@@ -100,8 +98,13 @@ router.post("/", createRateLimiter(5), async (req, res) => {
     }
 
     res.json({
-      answer: response.content,
-      sources: relevantDocs.map((doc) => doc.metadata),
+      answer,
+      confidence: response.confidence,
+      keyPoints: response.keyPoints,
+      suggestedQuestions: response.suggestedQuestions,
+      sources: response.answeredFromContext
+        ? relevantDocs.map((doc) => doc.metadata)
+        : [],
     });
   } catch (err) {
     console.error(err);
