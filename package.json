@@ -1,23 +1,19 @@
 {
   "name": "langchain.js-project",
   "version": "1.0.0",
-  "description": "",
   "main": "src/server.js",
   "scripts": {
     "split": "node src/splitter.js",
-<<<<<<< Updated upstream
-    "dev": "nodemon src/server.js"
-=======
+    "dev": "nodemon src/server.js",
     "dev:backend": "nodemon src/server.js",
     "dev:frontend": "vite --config client/vite.config.js",
+    "build:backend": "node src/server.js",
     "build:frontend": "vite build --config client/vite.config.js",
     "test": "npm run test:backend && npm run test:frontend",
     "test:backend": "vitest run --config testing/vitest.backend.config.js",
     "test:frontend": "vitest run --config testing/vitest.frontend.config.js",
     "test:watch": "vitest"
->>>>>>> Stashed changes
   },
-  "keywords": [],
   "type": "module",
   "dependencies": {
     "@langchain/community": "^1.1.29",
@@ -27,16 +23,17 @@
     "@langchain/openai": "^1.6.2",
     "@langchain/textsplitters": "^1.0.2",
     "@supabase/supabase-js": "^2.118.0",
+    "cors": "^2.8.6",
     "dotenv": "^16.4.5",
     "express": "^5.3.0",
-    "express-rate-limit": "^8.7.1",
+    "express-rate-limit": "^8.5.0",
     "multer": "^2.4.0",
-    "pdf-parse": "^2.4.5"
+    "pdf-parse": "^2.4.5",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-<<<<<<< Updated upstream
-    "nodemon": "^3.1.14"
-=======
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^7.0.1",
@@ -47,6 +44,5 @@
     "tailwindcss": "^4.3.3",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"
->>>>>>> Stashed changes
   }
 }

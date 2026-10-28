@@ -4,6 +4,10 @@ import { supabaseClient } from "../utils/db.js";
 import { documentsPath, ingestDocument } from "../splitter.js";
 import { upload } from "../utils/multer.js";
 import { createRateLimiter } from "../utils/rate-limit.js";
+import {
+  documentNameParamsSchema,
+  uploadedDocumentsSchema,
+} from "../utils/validation.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -23,6 +27,12 @@ router.post(
       if (!req.files?.length) {
         return res.status(400).json({
           message: "Please upload at least one file using the 'documents' field.",
+        });
+      }
+      const filesResult = uploadedDocumentsSchema.safeParse(req.files);
+      if (!filesResult.success) {
+        return res.status(400).json({
+          message: "Please upload valid document files.",
         });
       }
 
@@ -91,10 +101,11 @@ router.get("/", createRateLimiter(20), async (_req, res) => {
 
 router.delete("/:fileName", createRateLimiter(10), async (req, res) => {
   try {
-    const name = req.params.fileName.toLocaleLowerCase();
-    if (!name || typeof name !== "string") {
-      throw new Error("file name must be string.");
+    const paramsResult = documentNameParamsSchema.safeParse(req.params);
+    if (!paramsResult.success) {
+      return res.status(400).json({ message: "Please provide a valid file name." });
     }
+    const name = paramsResult.data.fileName.toLocaleLowerCase();
     const fileName = path.basename(name);
     const filePath = path.join(documentsPath, fileName);
     await fs.unlink(filePath);

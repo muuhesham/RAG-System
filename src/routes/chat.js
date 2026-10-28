@@ -6,6 +6,12 @@ import { embedding } from "../utils/embedding.js";
 import { SupabaseVectorStore } from "@langchain/community/vectorstores/supabase";
 import { responsePrompt } from "../utils/prompts/responsePrompt.js";
 import { transformationPrompt } from "../utils/prompts/transformationPrompt.js";
+import {
+  answerSchema,
+  chatRequestSchema,
+  correctedQuestionSchema,
+  sessionIdParamsSchema,
+} from "../utils/validation.js";
 import { createRateLimiter } from "../utils/rate-limit.js";
 import {
   deleteSessionHistory,
@@ -15,7 +21,8 @@ import {
 const router = express.Router();
 const supabase = supabaseClient(SUPABASE_URL, SUPABASE_SECRET_KEY);
 const embeddings = embedding();
-const structuredTransformationLlm = llm.withStructuredOutput(correctedQuestionSchema);
+const structuredTransformationLlm =
+  llm.withStructuredOutput(correctedQuestionSchema);
 const structuredAnswerLlm = llm.withStructuredOutput(answerSchema);
 
 const vectorStore = new SupabaseVectorStore(embeddings, {
@@ -28,18 +35,15 @@ router.delete(
   "/history/:sessionId",
   createRateLimiter(5),
   (req, res) => {
-    const { sessionId } = req.params;
-    if (
-      !sessionId ||
-      sessionId.trim().length === 0 ||
-      sessionId.trim().length > 128
-    ) {
+    const paramsResult = sessionIdParamsSchema.safeParse(req.params);
+    if (!paramsResult.success) {
       return res.status(400).json({
         message: "Please provide a valid sessionId.",
       });
     }
 
-    if (!deleteSessionHistory(sessionId.trim())) {
+    const { sessionId } = paramsResult.data;
+    if (!deleteSessionHistory(sessionId)) {
       return res.status(404).json({
         message: "Conversation history not found.",
       });
@@ -57,36 +61,24 @@ router.post("/", createRateLimiter(5), async (req, res) => {
       });
     }
 
-    const { question, sessionId } = req.body;
-    if (typeof question !== "string" || question.trim().length === 0) {
+    const bodyResult = chatRequestSchema.safeParse(req.body);
+    if (!bodyResult.success) {
       return res.status(400).json({
-        message: "please provide a valid question!",
-      });
-    }
-    if (
-      typeof sessionId !== "string" ||
-      sessionId.trim().length === 0 ||
-      sessionId.trim().length > 128
-    ) {
-      return res.status(400).json({
-        message: "Please provide a valid sessionId.",
+        message: "Please provide a valid question and sessionId.",
       });
     }
 
-    const historyStore = getSessionHistory(sessionId.trim());
+    const { question, sessionId } = bodyResult.data;
+    const historyStore = getSessionHistory(sessionId);
     const allMessages = await historyStore.getMessages();
     const chatHistory = allMessages.slice(-6);
     const rewriteMessage = await transformationPrompt.invoke({
       chatHistory,
       question,
     });
-<<<<<<< Updated upstream
-    const rewriteResponse = await llm.invoke(rewriteMessage);
-    const transformationQuestion = rewriteResponse.content.toString().trim();
-=======
-    const rewriteResponse = await structuredTransformationLlm.invoke(rewriteMessage);
+    const rewriteResponse =
+      await structuredTransformationLlm.invoke(rewriteMessage);
     const transformationQuestion = rewriteResponse.correctedQuestion;
->>>>>>> Stashed changes
     const relevantDocs = await vectorStore.similaritySearch(
       transformationQuestion,
       3,
@@ -97,36 +89,19 @@ router.post("/", createRateLimiter(5), async (req, res) => {
       chatHistory,
       question: transformationQuestion,
     });
-<<<<<<< Updated upstream
-    const response = await llm.invoke(messages);
-    await historyStore.addUserMessage(question);
-    await historyStore.addAIMessage(response.content.toString());
-    const updatedMessages = await historyStore.getMessages();
-    if (updatedMessages.length > 10) {
-      await historyStore.clear();
-      await historyStore.addMessages(updatedMessages.slice(-10));
-    }
-
-    res.json({
-      answer: response.content,
-      sources: relevantDocs.map((doc) => doc.metadata),
-    });
-=======
     const response = await structuredAnswerLlm.invoke(messages);
     const answer = response.answer;
     const uniqueDocs = [
       ...new Set(relevantDocs.map((doc) => doc.metadata.source)),
     ];
 
-    const responsePayload = {
+    res.json({
       answer,
       confidence: response.confidence,
       keyPoints: response.keyPoints,
       suggestedQuestions: response.suggestedQuestions,
       sources: response.answeredFromContext ? uniqueDocs : [],
-    };
-
-    res.json(responsePayload);
+    });
 
     await Promise.all([
       historyStore.addUserMessage(question),
@@ -137,9 +112,6 @@ router.post("/", createRateLimiter(5), async (req, res) => {
       await historyStore.clear();
       await historyStore.addMessages(updatedMessages.slice(-6));
     }
-
-
->>>>>>> Stashed changes
   } catch (err) {
     console.error(err);
     res.status(500).json({
