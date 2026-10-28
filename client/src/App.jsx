@@ -100,7 +100,7 @@ function Icon({ name, className = "" }) {
   );
 }
 
-function Message({ message }) {
+function Message({ message, onSuggestedQuestion }) {
   const isUser = message.role === "user";
   return (
     <article
@@ -118,6 +118,34 @@ function Message({ message }) {
         <p dir="auto" className="whitespace-pre-wrap break-words">
           {message.text}
         </p>
+        {!isUser && message.confidence && (
+          <div className="mt-3">
+            <span className={`source-chip confidence-${message.confidence}`}>
+              Confidence: {message.confidence}
+            </span>
+          </div>
+        )}
+        {!isUser && message.keyPoints?.length > 0 && (
+          <ul className="mt-3 list-disc space-y-1 pl-5 text-sm">
+            {message.keyPoints.map((point, index) => (
+              <li key={`${point}-${index}`}>{point}</li>
+            ))}
+          </ul>
+        )}
+        {!isUser && message.suggestedQuestions?.length > 0 && (
+          <div className="mt-4 flex flex-wrap gap-2 border-t border-stone-200 pt-3">
+            {message.suggestedQuestions.map((suggestedQuestion, index) => (
+              <button
+                type="button"
+                className="source-chip cursor-pointer"
+                key={`${suggestedQuestion}-${index}`}
+                onClick={() => onSuggestedQuestion(suggestedQuestion)}
+              >
+                {suggestedQuestion}
+              </button>
+            ))}
+          </div>
+        )}
         {!isUser && message.sources?.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-2 border-t border-stone-200 pt-3">
             {message.sources.map((source, index) => {
@@ -197,6 +225,11 @@ export default function App() {
             typeof result.answer === "string"
               ? result.answer
               : JSON.stringify(result.answer),
+          confidence: result.confidence,
+          keyPoints: Array.isArray(result.keyPoints) ? result.keyPoints : [],
+          suggestedQuestions: Array.isArray(result.suggestedQuestions)
+            ? result.suggestedQuestions
+            : [],
           sources: Array.isArray(result.sources) ? result.sources : [],
         },
       ]);
@@ -356,7 +389,11 @@ export default function App() {
                 </div>
               ) : (
                 messages.map((message, index) => (
-                  <Message key={`${index}-${message.role}`} message={message} />
+                  <Message
+                    key={`${index}-${message.role}`}
+                    message={message}
+                    onSuggestedQuestion={setQuestion}
+                  />
                 ))
               )}
 
