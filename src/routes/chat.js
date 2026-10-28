@@ -15,6 +15,8 @@ import {
 const router = express.Router();
 const supabase = supabaseClient(SUPABASE_URL, SUPABASE_SECRET_KEY);
 const embeddings = embedding();
+const structuredTransformationLlm = llm.withStructuredOutput(correctedQuestionSchema);
+const structuredAnswerLlm = llm.withStructuredOutput(answerSchema);
 
 const vectorStore = new SupabaseVectorStore(embeddings, {
   client: supabase,
@@ -73,16 +75,21 @@ router.post("/", createRateLimiter(5), async (req, res) => {
 
     const historyStore = getSessionHistory(sessionId.trim());
     const allMessages = await historyStore.getMessages();
-    const chatHistory = allMessages.slice(-10);
+    const chatHistory = allMessages.slice(-6);
     const rewriteMessage = await transformationPrompt.invoke({
       chatHistory,
       question,
     });
+<<<<<<< Updated upstream
     const rewriteResponse = await llm.invoke(rewriteMessage);
     const transformationQuestion = rewriteResponse.content.toString().trim();
+=======
+    const rewriteResponse = await structuredTransformationLlm.invoke(rewriteMessage);
+    const transformationQuestion = rewriteResponse.correctedQuestion;
+>>>>>>> Stashed changes
     const relevantDocs = await vectorStore.similaritySearch(
       transformationQuestion,
-      4,
+      3,
     );
     const context = relevantDocs.map((doc) => doc.pageContent).join("\n\n");
     const messages = await responsePrompt.invoke({
@@ -90,6 +97,7 @@ router.post("/", createRateLimiter(5), async (req, res) => {
       chatHistory,
       question: transformationQuestion,
     });
+<<<<<<< Updated upstream
     const response = await llm.invoke(messages);
     await historyStore.addUserMessage(question);
     await historyStore.addAIMessage(response.content.toString());
@@ -103,6 +111,35 @@ router.post("/", createRateLimiter(5), async (req, res) => {
       answer: response.content,
       sources: relevantDocs.map((doc) => doc.metadata),
     });
+=======
+    const response = await structuredAnswerLlm.invoke(messages);
+    const answer = response.answer;
+    const uniqueDocs = [
+      ...new Set(relevantDocs.map((doc) => doc.metadata.source)),
+    ];
+
+    const responsePayload = {
+      answer,
+      confidence: response.confidence,
+      keyPoints: response.keyPoints,
+      suggestedQuestions: response.suggestedQuestions,
+      sources: response.answeredFromContext ? uniqueDocs : [],
+    };
+
+    res.json(responsePayload);
+
+    await Promise.all([
+      historyStore.addUserMessage(question),
+      historyStore.addAIMessage(answer),
+    ]);
+    const updatedMessages = await historyStore.getMessages();
+    if (updatedMessages.length > 10) {
+      await historyStore.clear();
+      await historyStore.addMessages(updatedMessages.slice(-6));
+    }
+
+
+>>>>>>> Stashed changes
   } catch (err) {
     console.error(err);
     res.status(500).json({
