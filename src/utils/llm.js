@@ -6,7 +6,9 @@ const modelCache = new InMemoryCache();
 
 export const llm = new ChatGoogleGenerativeAI({
   apiKey: AI_API_KEY,
-  model: "gemini-3.8-flash",
+  model: "gemini-3.5-flash-lite",
   temperature: 0,
+  maxOutputTokens: 700,
+  topP: 0.8,
   cache: modelCache,
 });

@@ -21,7 +21,7 @@ An Arabic- and English-friendly document assistant powered by retrieval-augmente
 
 Upload PDF, TXT, or Markdown documents and ask questions in natural language. The system searches your indexed files for relevant passages and uses Google Gemini to generate an answer grounded in those passages, with source information when available.
 
-The interface supports Arabic and English, adapts to mobile and desktop screens, and keeps a separate conversation session for each browser.
+The interface supports Arabic and English, adapts to mobile and desktop screens, keeps a separate conversation session for each browser, and scrolls chat messages inside the conversation panel without scrolling the whole page. It also shows the submitted question immediately and displays a chatbot "thinking" indicator while waiting for the answer.
 
 ## 🖼️ How it works
 
@@ -44,7 +44,7 @@ flowchart LR
 |---|---|
 | Frontend | React 19, Vite 8, Tailwind CSS 4 |
 | Backend | Node.js, Express 5 |
-| AI and orchestration | LangChain.js, Google Gemini (`gemini-2.5-flash`) |
+| AI and orchestration | LangChain.js, Google Gemini (`gemini-3.5-flash-lite`) |
 | Embeddings | Google Gemini (`gemini-embedding-001`) |
 | Vector database | Supabase, PostgreSQL, `pgvector` |
 | File ingestion | LangChain text splitters and PDF loader |
@@ -159,8 +159,10 @@ The production files are written to `client/dist`. This builds the frontend only
 1. Upload one or more documents from the documents panel.
 2. Wait for the upload and indexing to finish.
 3. Ask a question in the chat. Press **Enter** to send or **Shift + Enter** to insert a new line.
-4. Read the answer and check the listed source filenames.
-5. Delete documents or clear the current conversation using the controls.
+4. Your question appears immediately, followed by a chatbot thinking indicator.
+5. Read the answer and check the listed source filenames.
+6. Use the chat scrollbar to review older messages; the page stays fixed while scrolling inside the conversation on desktop.
+7. Delete documents or clear the current conversation using the controls.
 
 **Upload limits:** `.pdf`, `.txt`, and `.md` files; up to **5 MB per file** and **20 files per request**.
 
@@ -188,7 +190,7 @@ client/                 React application and Vite configuration
     main.jsx            React entry point
     style.css           Application styles
 src/
-  routes/               Chat and document API routes
+  controllers/               Chat and document API controllers
   utils/                AI, prompts, Supabase, uploads, and session helpers
   documents/            Uploaded source files
   server.js             Express server entry point
@@ -201,6 +203,9 @@ package.json            Dependencies and development scripts
 
 - Original uploaded files are stored on the backend filesystem in `src/documents`; make this directory persistent in production.
 - Document chunks and embeddings are stored in Supabase.
+- The chat response uses up to two relevant document chunks and limits the provided context to reduce model input tokens.
+- LLM responses are cached in memory when the same request and prompt are repeated during the backend process lifetime.
+- The UI uses separate user and chatbot icons, supports light and dark themes, and adapts the conversation and document panels for desktop and mobile screens.
 - Backend conversation history is held in memory: up to 10 messages per session, a 24-hour inactivity expiry, and 1,000 sessions maximum. Restarting the backend clears it.
 - The browser stores its session ID and up to 10 displayed messages in `localStorage`. Clearing the browser's site data starts a new browser session.
 - In production, set `FRONTEND_URL` to the deployed frontend origin. If frontend and backend are on different origins, set `VITE_API_URL` before building the frontend.

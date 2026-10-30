@@ -8,8 +8,14 @@
   text-rendering: optimizeLegibility;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
-  min-height: 100vh;
   margin: 0;
 }
 
@@ -67,6 +73,26 @@ body {
 
 .chat-scroll {
   position: relative;
+  min-height: 0;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.chat-scroll,
+.app-sidebar {
+  scrollbar-width: thin;
+  scrollbar-color: #d6d3d1 transparent;
+}
+
+.chat-scroll::-webkit-scrollbar,
+.app-sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-scroll::-webkit-scrollbar-thumb,
+.app-sidebar::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #d6d3d1;
 }
 
 .scroll-bottom-button {
@@ -197,11 +223,17 @@ textarea:focus-visible {
 }
 
 .message-bubble {
-  max-width: min(85%, 680px);
+  width: fit-content;
+  max-width: min(82%, 680px);
+  min-width: 0;
   border-radius: 18px;
   padding: 14px 16px;
   font-size: 14px;
   line-height: 1.7;
+}
+
+.message-bubble p {
+  overflow-wrap: anywhere;
 }
 
 .message-bubble-ai {
@@ -372,6 +404,23 @@ li:hover .icon-button-small,
 }
 
 @media (max-width: 1023px) {
+  .app-shell {
+    height: auto;
+    min-height: 100dvh;
+    overflow-y: auto;
+  }
+
+  .app-content {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  .app-layout {
+    flex: none;
+    overflow: visible;
+  }
+
   .message-bubble {
     max-width: 90%;
   }

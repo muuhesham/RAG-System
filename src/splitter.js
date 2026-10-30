@@ -16,8 +16,8 @@ const supabase = supabaseClient(SUPABASE_URL, SUPABASE_SECRET_KEY);
 const embeddings = embedding();
 
 const textSplitter = new RecursiveCharacterTextSplitter({
-  chunkSize: 150,
-  chunkOverlap: 30,
+  chunkSize: 300,
+  chunkOverlap: 15,
 });
 
 export async function ingestDocument(fileName) {

@@ -3,5 +3,4 @@ node_modules/
 dist/
 client/dist/
 .vscode/
-src/documents/*.md
-src/documents/*.txt
+src/documents/

@@ -1,7 +1,7 @@
 import express from "express";
 import { PORT } from "./utils/env.js";
-import chatRouter from "./routes/chat.js";
-import documentsRouter from "./routes/documents.js";
+import chatRouter from "./controllers/chat.js";
+import documentsRouter from "./controllers/documents.js";
 import { corsOptions } from "./utils/cors.js";
 
 const app = express();
