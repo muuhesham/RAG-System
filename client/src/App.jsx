@@ -73,6 +73,24 @@ function Icon({ name, className = "" }) {
     );
   }
 
+  if (name === "user") {
+    return (
+      <svg {...shared}>
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4 21a8 8 0 0 1 16 0" />
+      </svg>
+    );
+  }
+
+  if (name === "bot") {
+    return (
+      <svg {...shared}>
+        <rect x="4" y="7" width="16" height="12" rx="3" />
+        <path d="M12 3v4M9.5 12h.01M14.5 12h.01M9 16h6" />
+      </svg>
+    );
+  }
+
   if (name === "upload") {
     return (
       <svg {...shared}>
@@ -143,7 +161,7 @@ function Message({ message, onSuggestedQuestion }) {
         className={`message-avatar ${isUser ? "message-avatar-user" : "message-avatar-ai"}`}
         aria-hidden="true"
       >
-        {isUser ? "Y" : "R"}
+        <Icon name={isUser ? "user" : "bot"} />
       </div>
       <div
         className={`message-bubble ${isUser ? "message-bubble-user" : "message-bubble-ai"}`}
@@ -192,7 +210,9 @@ function Message({ message, onSuggestedQuestion }) {
           <div className="mt-4 flex flex-wrap gap-2 border-t border-stone-200 pt-3">
             {message.sources.map((source, index) => {
               const label =
-                typeof source?.source === "string"
+                typeof source === "string"
+                  ? source
+                  : typeof source?.source === "string"
                   ? source.source
                   : `Source ${index + 1}`;
               return (
@@ -243,7 +263,16 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const container = chatScrollRef.current;
+    if (!container) return;
+    if (typeof container.scrollTo === "function") {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: "smooth",
+      });
+    } else {
+      container.scrollTop = container.scrollHeight;
+    }
   }, [messages, chatBusy]);
 
   function handleChatScroll() {
@@ -255,7 +284,16 @@ export default function App() {
   }
 
   function scrollToLatestMessage() {
-    messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const container = chatScrollRef.current;
+    if (!container) return;
+    if (typeof container.scrollTo === "function") {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: "smooth",
+      });
+    } else {
+      container.scrollTop = container.scrollHeight;
+    }
   }
 
   function updateMessages(nextMessages) {
@@ -275,6 +313,11 @@ export default function App() {
     setError("");
     setNotice("");
     setChatBusy(true);
+    const pendingMessages = [
+      ...messages,
+      { role: "user", text: submittedQuestion },
+    ];
+    updateMessages(pendingMessages);
 
     try {
       const result = await sendQuestion(
@@ -282,8 +325,7 @@ export default function App() {
         sessionIdRef.current,
       );
       updateMessages([
-        ...messages,
-        { role: "user", text: submittedQuestion },
+        ...pendingMessages,
         {
           role: "assistant",
           text:
@@ -300,6 +342,7 @@ export default function App() {
       ]);
     } catch (requestError) {
       setQuestion(submittedQuestion);
+      updateMessages(messages);
       setError(getErrorMessage(requestError));
     } finally {
       setChatBusy(false);
@@ -405,7 +448,7 @@ export default function App() {
 
   return (
     <main
-      className={`app-shell min-h-screen ${isDraggingFiles ? "is-file-dragging" : ""}`}
+      className={`app-shell h-screen overflow-hidden ${isDraggingFiles ? "is-file-dragging" : ""}`}
       onDragEnter={(event) => {
         event.preventDefault();
         setIsDraggingFiles(true);
@@ -430,8 +473,8 @@ export default function App() {
           </div>
         </div>
       )}
-      <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-4 sm:px-8">
-        <header className="flex items-center justify-between border-b border-stone-200 py-5">
+      <div className="app-content mx-auto flex h-full max-w-7xl flex-col overflow-hidden px-4 sm:px-8">
+        <header className="app-header flex min-h-[73px] items-center justify-between border-b border-stone-200 py-4">
           <a className="flex items-center gap-3" href="/" aria-label="RAG Assistant home">
             <span className="brand-mark">R</span>
             <span>
@@ -443,9 +486,9 @@ export default function App() {
               </span>
             </span>
           </a>
-          <div className="hidden items-center gap-2 text-xs text-stone-500 sm:flex">
+          <div className="flex items-center gap-2 text-xs text-stone-500">
             <span className="h-2 w-2 rounded-full bg-emerald-500" />
-            Browser session
+            <span className="hidden sm:inline">Browser session</span>
             <button
               type="button"
               className="icon-button"
@@ -460,8 +503,8 @@ export default function App() {
           </div>
         </header>
 
-        <div className="grid flex-1 grid-cols-1 gap-6 py-6 lg:grid-cols-[minmax(0,1fr)_300px] lg:py-8">
-          <section className="relative flex min-h-[68vh] flex-col overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-sm lg:min-h-0">
+        <div className="app-layout grid min-h-0 flex-1 grid-cols-1 gap-6 overflow-hidden py-4 lg:grid-cols-[minmax(0,1fr)_300px] lg:py-6">
+          <section className="chat-panel relative flex h-[68vh] min-h-[520px] flex-col overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-sm lg:h-auto lg:min-h-0">
             <div className="flex items-center justify-between border-b border-stone-100 px-5 py-4 sm:px-7">
               <div>
                 <h1 className="text-base font-semibold">Your conversation</h1>
@@ -508,7 +551,9 @@ export default function App() {
 
               {chatBusy && (
                 <div className="flex items-center gap-3" role="status" aria-live="polite">
-                  <div className="message-avatar message-avatar-ai">R</div>
+                  <div className="message-avatar message-avatar-ai">
+                    <Icon name="bot" />
+                  </div>
                   <div className="message-bubble message-bubble-ai flex items-center gap-2 py-4">
                     <span className="typing-dot" />
                     <span className="typing-dot animation-delay-150" />
@@ -588,7 +633,7 @@ export default function App() {
             </form>
           </section>
 
-          <aside className="space-y-5">
+          <aside className="app-sidebar min-h-0 space-y-5 lg:overflow-y-auto">
             <section className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>

@@ -5,7 +5,7 @@ import { supabaseClient } from "../utils/db.js";
 import { embedding } from "../utils/embedding.js";
 import { SupabaseVectorStore } from "@langchain/community/vectorstores/supabase";
 import { responsePrompt } from "../utils/prompts/responsePrompt.js";
-import { transformationPrompt } from "../utils/prompts/transformationPrompt.js";
+// import { transformationPrompt } from "../utils/prompts/transformationPrompt.js";
 import {
   answerSchema,
   chatRequestSchema,
@@ -21,8 +21,8 @@ import {
 const router = express.Router();
 const supabase = supabaseClient(SUPABASE_URL, SUPABASE_SECRET_KEY);
 const embeddings = embedding();
-const structuredTransformationLlm =
-  llm.withStructuredOutput(correctedQuestionSchema);
+// const structuredTransformationLlm =
+//   llm.withStructuredOutput(correctedQuestionSchema);
 const structuredAnswerLlm = llm.withStructuredOutput(answerSchema);
 
 const vectorStore = new SupabaseVectorStore(embeddings, {
@@ -72,22 +72,25 @@ router.post("/", createRateLimiter(5), async (req, res) => {
     const historyStore = getSessionHistory(sessionId);
     const allMessages = await historyStore.getMessages();
     const chatHistory = allMessages.slice(-6);
-    const rewriteMessage = await transformationPrompt.invoke({
-      chatHistory,
-      question,
-    });
-    const rewriteResponse =
-      await structuredTransformationLlm.invoke(rewriteMessage);
-    const transformationQuestion = rewriteResponse.correctedQuestion;
+    // const rewriteMessage = await transformationPrompt.invoke({
+    //   chatHistory,
+    //   question,
+    // });
+    // const rewriteResponse =
+    //   await structuredTransformationLlm.invoke(rewriteMessage);
+    // const transformationQuestion = rewriteResponse.correctedQuestion;
     const relevantDocs = await vectorStore.similaritySearch(
-      transformationQuestion,
-      3,
+      question,
+      2,
     );
-    const context = relevantDocs.map((doc) => doc.pageContent).join("\n\n");
+    const context = relevantDocs
+      .map((doc) => doc.pageContent.trim())
+      .join("\n\n")
+      .slice(0, 3000);
     const messages = await responsePrompt.invoke({
       context,
       chatHistory,
-      question: transformationQuestion,
+      question,
     });
     const response = await structuredAnswerLlm.invoke(messages);
     const answer = response.answer;
