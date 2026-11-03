@@ -7,3 +7,11 @@ export const embedding = () => {
     model: "gemini-embedding-001",
   });
 };
+
+// import { OllamaEmbeddings } from "@langchain/ollama";
+// export const embedding = () => {
+//   return new OllamaEmbeddings({
+//     baseUrl: "http://localhost:11434",
+//     model: "nomic-embed-text", // ollama pull nomic-embed-text
+//   });
+// };

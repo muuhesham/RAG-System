@@ -12,3 +12,13 @@ export const llm = new ChatGoogleGenerativeAI({
   topP: 0.8,
   cache: modelCache,
 });
+
+// import { ChatOllama } from "@langchain/ollama";
+// export const llm = new ChatOllama({
+//   baseUrl: "http://localhost:11434",
+//   model: "llama3.2", // ollama pull llama3.2
+//   temperature: 0,
+//   numPredict: 700,
+//   topP: 0.8,
+//   cache: modelCache,
+// });

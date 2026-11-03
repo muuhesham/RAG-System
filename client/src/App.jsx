@@ -137,6 +137,31 @@ function Icon({ name, className = "" }) {
     );
   }
 
+  if (name === "expand") {
+    return (
+      <svg {...shared}>
+        <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" />
+      </svg>
+    );
+  }
+
+  if (name === "collapse") {
+    return (
+      <svg {...shared}>
+        <path d="M3 8h5V3M21 8h-5V3M3 16h5v5M21 16h-5v5" />
+      </svg>
+    );
+  }
+
+  if (name === "panel") {
+    return (
+      <svg {...shared}>
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="M15 4v16" />
+      </svg>
+    );
+  }
+
   return (
     <svg {...shared}>
       <path d="M12 3v18" />
@@ -213,8 +238,8 @@ function Message({ message, onSuggestedQuestion }) {
                 typeof source === "string"
                   ? source
                   : typeof source?.source === "string"
-                  ? source.source
-                  : `Source ${index + 1}`;
+                    ? source.source
+                    : `Source ${index + 1}`;
               return (
                 <span className="source-chip" key={`${label}-${index}`}>
                   {label}
@@ -233,24 +258,42 @@ export default function App() {
   const messageEndRef = useRef(null);
   const chatScrollRef = useRef(null);
   const fileInputRef = useRef(null);
+  const questionInputRef = useRef(null);
   const [messages, setMessages] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [question, setQuestion] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
   const [documentsBusy, setDocumentsBusy] = useState(false);
   const [documentAction, setDocumentAction] = useState("");
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [notification, setNotification] = useState(null);
   const [theme, setTheme] = useState(
     () => localStorage.getItem(THEME_STORAGE_KEY) ?? "light",
   );
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const [chatFullscreen, setChatFullscreen] = useState(false);
+  const [documentsVisible, setDocumentsVisible] = useState(true);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (question.length === 0 && questionInputRef.current) {
+      questionInputRef.current.style.height = "44px";
+    }
+  }, [question]);
+
+  useEffect(() => {
+    if (!notification) return;
+    if (notification.type === "confirm") return;
+    const timeoutId = window.setTimeout(
+      () => setNotification(null),
+      notification.type === "error" ? 7000 : 4500,
+    );
+    return () => window.clearTimeout(timeoutId);
+  }, [notification]);
 
   useEffect(() => {
     const sessionId = getSessionId();
@@ -259,8 +302,18 @@ export default function App() {
 
     listDocuments()
       .then((result) => setDocuments(result.documents))
-      .catch((requestError) => setError(getErrorMessage(requestError)));
+      .catch((requestError) =>
+        showNotification("error", getErrorMessage(requestError)),
+      );
   }, []);
+
+  function showNotification(type, message, onConfirm) {
+    setNotification({ type, message, onConfirm, id: Date.now() });
+  }
+
+  function dismissNotification() {
+    setNotification(null);
+  }
 
   useEffect(() => {
     const container = chatScrollRef.current;
@@ -310,8 +363,7 @@ export default function App() {
     if (!submittedQuestion || chatBusy) return;
 
     setQuestion("");
-    setError("");
-    setNotice("");
+    dismissNotification();
     setChatBusy(true);
     const pendingMessages = [
       ...messages,
@@ -343,7 +395,7 @@ export default function App() {
     } catch (requestError) {
       setQuestion(submittedQuestion);
       updateMessages(messages);
-      setError(getErrorMessage(requestError));
+      showNotification("error", getErrorMessage(requestError));
     } finally {
       setChatBusy(false);
     }
@@ -351,20 +403,27 @@ export default function App() {
 
   async function handleClearConversation() {
     if (chatBusy) return;
-    setError("");
-    setNotice("");
+    showNotification(
+      "confirm",
+      "Are you sure you want to clear the conversation?",
+      clearConversationConfirmed,
+    );
+  }
+
+  async function clearConversationConfirmed() {
+    dismissNotification();
 
     try {
       await clearConversation(sessionIdRef.current);
     } catch (requestError) {
       if (!getErrorMessage(requestError).includes("not found")) {
-        setError(getErrorMessage(requestError));
+        showNotification("error", getErrorMessage(requestError));
         return;
       }
     }
 
     updateMessages([]);
-    setNotice("Conversation cleared.");
+    showNotification("success", "Conversation cleared.");
   }
 
   async function handleUpload(event) {
@@ -377,7 +436,10 @@ export default function App() {
     if (files.length === 0) return;
 
     if (files.length > MAX_FILES) {
-      setError(`You can upload up to ${MAX_FILES} files at a time.`);
+      showNotification(
+        "error",
+        `You can upload up to ${MAX_FILES} files at a time.`,
+      );
       return;
     }
 
@@ -397,7 +459,10 @@ export default function App() {
       return false;
     });
     if (duplicateName) {
-      setError(`${duplicateName.name} has already been uploaded or selected.`);
+      showNotification(
+        "error",
+        `${duplicateName.name} has already been uploaded or selected.`,
+      );
       return;
     }
 
@@ -406,7 +471,8 @@ export default function App() {
         !ALLOWED_EXTENSIONS.test(file.name) || file.size > MAX_FILE_SIZE,
     );
     if (invalidFile) {
-      setError(
+      showNotification(
+        "error",
         !ALLOWED_EXTENSIONS.test(invalidFile.name)
           ? `${invalidFile.name} is not a supported file. Choose a PDF, TXT, or MD file.`
           : `${invalidFile.name} is larger than the 5 MB limit.`,
@@ -414,33 +480,43 @@ export default function App() {
       return;
     }
 
-    setError("");
-    setNotice("");
+    dismissNotification();
     setDocumentsBusy(true);
     try {
       const result = await uploadDocuments(files);
-      setNotice(result.message ?? "Documents uploaded successfully.");
+      showNotification(
+        "success",
+        result.message ?? "Documents uploaded successfully.",
+      );
       const updatedList = await listDocuments();
       setDocuments(updatedList.documents);
     } catch (uploadError) {
-      setError(getErrorMessage(uploadError));
+      showNotification("error", getErrorMessage(uploadError));
     } finally {
       setDocumentsBusy(false);
     }
   }
 
   async function handleDeleteDocument(fileName) {
+    showNotification(
+      "confirm",
+      `Are you sure you want to delete "${fileName}"?`,
+      () => deleteDocumentConfirmed(fileName),
+    );
+  }
+
+  async function deleteDocumentConfirmed(fileName) {
+    dismissNotification();
+
     setDocumentAction(fileName);
-    setError("");
-    setNotice("");
     try {
       const result = await deleteDocument(fileName);
       setDocuments((current) =>
         current.filter((document) => document !== fileName),
       );
-      setNotice(result.message ?? "Document deleted.");
+      showNotification("success", result.message ?? "Document deleted.");
     } catch (deleteError) {
-      setError(getErrorMessage(deleteError));
+      showNotification("error", getErrorMessage(deleteError));
     } finally {
       setDocumentAction("");
     }
@@ -448,7 +524,9 @@ export default function App() {
 
   return (
     <main
-      className={`app-shell h-screen overflow-hidden ${isDraggingFiles ? "is-file-dragging" : ""}`}
+      className={`app-shell h-screen overflow-hidden ${
+        chatFullscreen ? "app-shell-chat-fullscreen" : ""
+      } ${isDraggingFiles ? "is-file-dragging" : ""}`}
       onDragEnter={(event) => {
         event.preventDefault();
         setIsDraggingFiles(true);
@@ -473,26 +551,73 @@ export default function App() {
           </div>
         </div>
       )}
+      {notification && (
+        <div
+          key={notification.id}
+          className={`app-notification app-notification-${notification.type === "confirm" ? "confirmation" : notification.type}`}
+          role={notification.type === "error" ? "alert" : "dialog"}
+          aria-live={notification.type === "error" ? "assertive" : "polite"}
+        >
+          <span className="app-notification-message">
+            {notification.message}
+          </span>
+          {notification.type === "confirm" ? (
+            <div className="app-notification-actions">
+              <button
+                type="button"
+                className="app-notification-cancel"
+                onClick={dismissNotification}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="app-notification-action-confirm"
+                onClick={notification.onConfirm}
+              >
+                {notification.message.includes("conversation")
+                  ? "Clear"
+                  : "Delete"}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="app-notification-close"
+              aria-label="Dismiss notification"
+              onClick={dismissNotification}
+            >
+              ×
+            </button>
+          )}
+        </div>
+      )}
       <div className="app-content mx-auto flex h-full max-w-7xl flex-col overflow-hidden px-4 sm:px-8">
         <header className="app-header flex min-h-[73px] items-center justify-between border-b border-stone-200 py-4">
-          <a className="flex items-center gap-3" href="/" aria-label="RAG Assistant home">
-            <span className="brand-mark">R</span>
+          <a
+            className="flex items-center gap-3"
+            href="/"
+            aria-label="RAG Assistant home"
+          >
+            <span className="brand-mark">
+              <Icon name="bot" className="h-5 w-5" />
+            </span>
             <span>
-              <span className="block text-sm font-semibold tracking-tight">
+              <span className="block text-[15px] font-semibold leading-tight tracking-tight">
                 RAG Assistant
               </span>
-              <span className="block text-xs text-stone-500">
-                Ask your documents
+              <span className="mt-1 block text-[11px] leading-tight text-stone-500">
+                Answers grounded in your documents
               </span>
             </span>
           </a>
           <div className="flex items-center gap-2 text-xs text-stone-500">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" />
-            <span className="hidden sm:inline">Browser session</span>
             <button
               type="button"
               className="icon-button"
-              aria-label={theme === "light" ? "Enable dark mode" : "Enable light mode"}
+              aria-label={
+                theme === "light" ? "Enable dark mode" : "Enable light mode"
+              }
               title={theme === "light" ? "Dark mode" : "Light mode"}
               onClick={() =>
                 setTheme((current) => (current === "light" ? "dark" : "light"))
@@ -503,25 +628,80 @@ export default function App() {
           </div>
         </header>
 
-        <div className="app-layout grid min-h-0 flex-1 grid-cols-1 gap-6 overflow-hidden py-4 lg:grid-cols-[minmax(0,1fr)_300px] lg:py-6">
+        <div
+          className={`app-layout grid min-h-0 flex-1 grid-cols-1 gap-6 overflow-hidden py-4 lg:py-6 ${
+            chatFullscreen
+              ? "layout-chat-fullscreen grid-cols-1"
+              : documentsVisible
+                ? "lg:grid-cols-[minmax(0,1fr)_300px]"
+                : "grid-cols-1"
+          }`}
+        >
           <section className="chat-panel relative flex h-[68vh] min-h-[520px] flex-col overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-sm lg:h-auto lg:min-h-0">
-            <div className="flex items-center justify-between border-b border-stone-100 px-5 py-4 sm:px-7">
-              <div>
+            <div className="conversation-header flex items-center justify-between gap-3 border-b border-stone-100 px-5 py-4 sm:px-7">
+              <div className="conversation-heading min-w-0">
                 <h1 className="text-base font-semibold">Your conversation</h1>
                 <p className="mt-1 text-xs text-stone-500">
                   Answers are grounded in your indexed documents.
                 </p>
               </div>
-              <button
-                className="icon-button"
-                type="button"
-                aria-label="Clear conversation"
-                title="Clear conversation"
-                disabled={chatBusy || messages.length === 0}
-                onClick={handleClearConversation}
-              >
-                <Icon name="trash" />
-              </button>
+              <div className="conversation-actions flex items-center gap-1">
+                <button
+                  className="icon-button documents-toggle-button"
+                  type="button"
+                  aria-label={
+                    documentsVisible
+                      ? "Hide documents panel"
+                      : "Show documents panel"
+                  }
+                  title={
+                    documentsVisible
+                      ? "Hide documents panel"
+                      : "Show documents panel"
+                  }
+                  onClick={() => {
+                    setDocumentsVisible((current) => !current);
+                    if (chatFullscreen) setChatFullscreen(false);
+                  }}
+                >
+                  <Icon name="panel" />
+                </button>
+                <button
+                  className="icon-button"
+                  type="button"
+                  aria-label={
+                    chatFullscreen ? "Exit chat fullscreen" : "Chat fullscreen"
+                  }
+                  title={
+                    chatFullscreen ? "Exit chat fullscreen" : "Chat fullscreen"
+                  }
+                  onClick={() => {
+                    if (chatFullscreen) {
+                      setChatFullscreen(false);
+                      setDocumentsVisible(true);
+                    } else {
+                      setChatFullscreen(true);
+                      setDocumentsVisible(false);
+                    }
+                  }}
+                >
+                  <Icon name={chatFullscreen ? "collapse" : "expand"} />
+                </button>
+                <button
+                  className="icon-button clear-conversation-button"
+                  type="button"
+                  aria-label="Clear conversation"
+                  title={
+                    messages.length === 0
+                      ? "No conversation to clear"
+                      : "Clear conversation"
+                  }
+                  disabled={chatBusy || messages.length === 0}
+                  onClick={handleClearConversation}
+                >
+                  <Icon name="trash" />
+                </button>
+              </div>
             </div>
 
             <div
@@ -531,12 +711,26 @@ export default function App() {
             >
               {messages.length === 0 && !chatBusy ? (
                 <div className="flex min-h-64 flex-col items-center justify-center px-4 text-center">
-                  <div className="mb-5 grid h-14 w-14 place-items-center rounded-2xl bg-emerald-50 text-emerald-700">
-                    <Icon name="upload" className="h-6 w-6" />
-                  </div>
-                  <h2 className="text-lg font-semibold">Start with a question</h2>
+                  <button
+                    type="button"
+                    className="empty-upload-button mb-5"
+                    aria-label="Upload documents"
+                    title="Upload documents"
+                    disabled={documentsBusy}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {documentsBusy ? (
+                      <span className="button-spinner button-spinner-dark" />
+                    ) : (
+                      <Icon name="upload" className="h-6 w-6" />
+                    )}
+                  </button>
+                  <h2 className="text-lg font-semibold">
+                    Start with a question
+                  </h2>
                   <p className="mt-2 max-w-sm text-sm leading-6 text-stone-500">
-                    Upload a document, then ask for a summary or a specific detail.
+                    Upload a document, then ask for a summary or a specific
+                    detail.
                   </p>
                 </div>
               ) : (
@@ -550,7 +744,11 @@ export default function App() {
               )}
 
               {chatBusy && (
-                <div className="flex items-center gap-3" role="status" aria-live="polite">
+                <div
+                  className="flex items-center gap-3"
+                  role="status"
+                  aria-live="polite"
+                >
                   <div className="message-avatar message-avatar-ai">
                     <Icon name="bot" />
                   </div>
@@ -577,19 +775,6 @@ export default function App() {
               </button>
             )}
 
-            {(error || notice) && (
-              <div
-                className={`mx-4 mb-3 rounded-xl px-4 py-3 text-sm sm:mx-7 ${
-                  error
-                    ? "bg-rose-50 text-rose-700"
-                    : "bg-emerald-50 text-emerald-700"
-                }`}
-                role={error ? "alert" : "status"}
-              >
-                {error || notice}
-              </div>
-            )}
-
             <form
               className="border-t border-stone-100 p-4 sm:px-7 sm:py-5"
               onSubmit={handleSubmit}
@@ -597,15 +782,20 @@ export default function App() {
               <label className="sr-only" htmlFor="question">
                 Ask a question
               </label>
-              <div className="flex items-end gap-3 rounded-2xl border border-stone-200 bg-stone-50 p-2 pl-4 transition focus-within:border-emerald-600 focus-within:ring-4 focus-within:ring-emerald-600/10">
+              <div className="question-composer flex items-end gap-3 border border-stone-200 bg-stone-50 p-2 pl-4 transition">
                 <textarea
+                  ref={questionInputRef}
                   id="question"
-                  className="max-h-36 min-h-11 flex-1 resize-y bg-transparent py-2.5 text-sm outline-none placeholder:text-stone-400"
+                  className="max-h-36 min-h-11 flex-1 resize-none overflow-y-auto bg-transparent py-2.5 text-sm outline-none placeholder:text-stone-400"
                   dir="auto"
                   rows={1}
                   placeholder="Ask about your documents…"
                   value={question}
-                  onChange={(event) => setQuestion(event.target.value)}
+                  onChange={(event) => {
+                    setQuestion(event.target.value);
+                    event.target.style.height = "auto";
+                    event.target.style.height = `${Math.min(event.target.scrollHeight, 144)}px`;
+                  }}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && !event.shiftKey) {
                       event.preventDefault();
@@ -624,7 +814,6 @@ export default function App() {
                   ) : (
                     <Icon name="send" />
                   )}
-                  <span className="hidden sm:inline">Send</span>
                 </button>
               </div>
               <p className="mt-2 px-1 text-[11px] text-stone-400">
@@ -633,7 +822,11 @@ export default function App() {
             </form>
           </section>
 
-          <aside className="app-sidebar min-h-0 space-y-5 lg:overflow-y-auto">
+          <aside
+            className={`app-sidebar min-h-0 space-y-5 lg:overflow-y-auto ${
+              documentsVisible && !chatFullscreen ? "" : "hidden"
+            }`}
+          >
             <section className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -690,7 +883,7 @@ export default function App() {
                           {document}
                         </span>
                         <button
-                          className="icon-button icon-button-small"
+                          className="icon-button icon-button-small delete-document-button"
                           type="button"
                           title={`Delete ${document}`}
                           aria-label={`Delete ${document}`}
@@ -709,16 +902,12 @@ export default function App() {
                 )}
               </div>
             </section>
-
-            <p className="px-2 text-xs leading-5 text-stone-400">
-              Your conversation is associated with this browser. Clearing site
-              storage starts a new session.
-            </p>
           </aside>
         </div>
 
         <footer className="pb-5 text-center text-[11px] text-stone-400">
-          Responses can make mistakes. Check important information against the source documents.
+          Responses can make mistakes. Check important information against the
+          source documents.
         </footer>
       </div>
     </main>
