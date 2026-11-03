@@ -1,10 +1,22 @@
 const API_BASE_URL = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
+let accessToken = null;
+
+export function setAccessToken(token) {
+  accessToken = token;
+}
 
 async function request(path, options) {
   let response;
 
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, options);
+    const headers = new Headers(options?.headers);
+    if (accessToken) {
+      headers.set("Authorization", "Bearer " + accessToken);
+    }
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers,
+    });
   } catch {
     throw new Error(
       "Couldn't reach the server. Check your connection and try again.",
@@ -19,6 +31,9 @@ async function request(path, options) {
   }
 
   if (!response.ok) {
+    if (response.status === 401) {
+      window.dispatchEvent(new Event("rag-auth-expired"));
+    }
     if (response.status === 429) {
       throw new Error(
         "Too many requests. Please wait a minute before trying again.",
@@ -47,6 +62,10 @@ export function clearConversation(sessionId) {
   return request(`/chat/history/${encodeURIComponent(sessionId)}`, {
     method: "DELETE",
   });
+}
+
+export function getConversationHistory(sessionId) {
+  return request(`/chat/history/${encodeURIComponent(sessionId)}`);
 }
 
 export function listDocuments() {

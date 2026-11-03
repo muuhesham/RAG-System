@@ -2,10 +2,20 @@ import { useEffect, useRef, useState } from "react";
 import {
   clearConversation,
   deleteDocument,
+  getConversationHistory,
   listDocuments,
   sendQuestion,
   uploadDocuments,
 } from "./api.js";
+import {
+  authConfigured,
+  getAuthSession,
+  signIn,
+  signOut,
+  signUp,
+  supabaseAuth,
+} from "./auth.js";
+import { setAccessToken } from "./api.js";
 
 const SESSION_STORAGE_KEY = "rag-assistant-session-id";
 const MESSAGE_LIMIT = 10;
@@ -78,6 +88,16 @@ function Icon({ name, className = "" }) {
       <svg {...shared}>
         <circle cx="12" cy="8" r="4" />
         <path d="M4 21a8 8 0 0 1 16 0" />
+      </svg>
+    );
+  }
+
+  if (name === "logout") {
+    return (
+      <svg {...shared}>
+        <path d="M10 17l5-5-5-5" />
+        <path d="M15 12H3" />
+        <path d="M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5" />
       </svg>
     );
   }
@@ -273,6 +293,47 @@ export default function App() {
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [chatFullscreen, setChatFullscreen] = useState(false);
   const [documentsVisible, setDocumentsVisible] = useState(true);
+  const [authReady, setAuthReady] = useState(!authConfigured);
+  const [session, setSession] = useState(null);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authMode, setAuthMode] = useState("signin");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+
+  useEffect(() => {
+    if (!authConfigured) return;
+
+    let active = true;
+    getAuthSession().then((currentSession) => {
+      if (!active) return;
+      setSession(currentSession);
+      setAccessToken(currentSession?.access_token ?? null);
+      setAuthReady(true);
+    });
+    const { data } = supabaseAuth.auth.onAuthStateChange((_event, currentSession) => {
+      if (!active) return;
+      setSession(currentSession);
+      setAccessToken(currentTokenOf(currentSession));
+      setAuthReady(true);
+    });
+    const handleAuthExpired = () => {
+      setAccessToken(null);
+      setSession(null);
+      setMessages([]);
+      setDocuments([]);
+      supabaseAuth.auth.signOut();
+    };
+    window.addEventListener("rag-auth-expired", handleAuthExpired);
+    return () => {
+      active = false;
+      window.removeEventListener("rag-auth-expired", handleAuthExpired);
+      data.subscription.unsubscribe();
+    };
+  }, []);
+
+  function currentTokenOf(currentSession) {
+    return currentSession?.access_token ?? null;
+  }
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -296,16 +357,27 @@ export default function App() {
   }, [notification]);
 
   useEffect(() => {
+    if (authConfigured && !session) return;
     const sessionId = getSessionId();
     sessionIdRef.current = sessionId;
     setMessages(loadMessages(sessionId));
+
+    if (typeof getConversationHistory === "function") {
+      getConversationHistory(sessionId)
+        .then((result) => {
+          if (Array.isArray(result.messages) && result.messages.length > 0) {
+            updateMessages(result.messages);
+          }
+        })
+        .catch(() => {});
+    }
 
     listDocuments()
       .then((result) => setDocuments(result.documents))
       .catch((requestError) =>
         showNotification("error", getErrorMessage(requestError)),
       );
-  }, []);
+  }, [authReady, session]);
 
   function showNotification(type, message, onConfirm) {
     setNotification({ type, message, onConfirm, id: Date.now() });
@@ -522,6 +594,121 @@ export default function App() {
     }
   }
 
+  async function handleAuthSubmit(event) {
+    event.preventEvent?.();
+    event.preventDefault();
+    setAuthBusy(true);
+    dismissNotification();
+    try {
+      const nextSession = authMode === "signup"
+        ? await signUp(authEmail, authPassword)
+        : await signIn(authEmail, authPassword);
+
+      if (!nextSession) {
+        showNotification(
+          "success",
+          "Account created. Check your email to confirm the account, then sign in.",
+        );
+        setAuthMode("signin");
+        return;
+      }
+      setSession(nextSession);
+      setAccessToken(nextSession.access_token);
+    } catch (requestError) {
+      showNotification("error", getErrorMessage(requestError));
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function handleSignOut() {
+    showNotification(
+      "confirm",
+      "Signing out will end your current session. Continue?",
+      confirmSignOut,
+    );
+  }
+
+  async function confirmSignOut() {
+    dismissNotification();
+    await signOut();
+    setSession(null);
+    setAccessToken(null);
+    setMessages([]);
+    setDocuments([]);
+  }
+
+  if (authConfigured && (!authReady || !session)) {
+    return (
+      <main className="app-shell flex min-h-screen items-center justify-center px-4">
+        <form
+          onSubmit={handleAuthSubmit}
+          className="w-full max-w-md rounded-3xl border border-stone-200 bg-white p-7 shadow-sm"
+        >
+          <div className="mb-7 text-center">
+            <span className="brand-mark mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full">
+              <Icon name="bot" className="h-6 w-6" />
+            </span>
+            <h1 className="text-xl font-semibold">RAG Assistant</h1>
+            <p className="mt-2 text-sm text-stone-500">
+              {authMode === "signin"
+                ? "Sign in to access your documents and chats."
+                : "Create an account to save your workspace."}
+            </p>
+          </div>
+          <label className="block text-sm font-medium" htmlFor="auth-email">
+            Email
+          </label>
+          <input
+            id="auth-email"
+            className="mt-2 w-full rounded-xl border border-stone-300 px-4 py-3"
+            type="email"
+            required
+            value={authEmail}
+            onChange={(event) => setAuthEmail(event.target.value)}
+          />
+          <label className="mt-4 block text-sm font-medium" htmlFor="auth-password">
+            Password
+          </label>
+          <input
+            id="auth-password"
+            className="mt-2 w-full rounded-xl border border-stone-300 px-4 py-3"
+            type="password"
+            required
+            minLength={6}
+            value={authPassword}
+            onChange={(event) => setAuthPassword(event.target.value)}
+          />
+          {notification && (
+            <p className={`mt-4 text-sm ${notification.type === "error" ? "text-red-600" : "text-emerald-700"}`}>
+              {notification.message}
+            </p>
+          )}
+          <button
+            className="auth-submit-button mt-5 w-full rounded-xl px-4 py-3 font-medium disabled:opacity-60"
+            type="submit"
+            disabled={authBusy || !authReady}
+          >
+            {authBusy
+              ? "Please wait..."
+              : authMode === "signin"
+                ? "Sign in"
+                : "Create account"}
+          </button>
+          <button
+            className="auth-switch-button mt-4 w-full text-sm"
+            type="button"
+            onClick={() => setAuthMode((mode) => mode === "signin" ? "signup" : "signin")}
+          >
+            {authMode === "signin"
+              ? "New here? Create an account"
+              : "Already have an account? Sign in"}
+          </button>
+        </form>
+      </main>
+    );
+  }
+
   return (
     <main
       className={`app-shell h-screen overflow-hidden ${
@@ -577,7 +764,9 @@ export default function App() {
               >
                 {notification.message.includes("conversation")
                   ? "Clear"
-                  : "Delete"}
+                  : notification.message.includes("Signing out")
+                    ? "Sign out"
+                    : "Delete"}
               </button>
             </div>
           ) : (
@@ -612,6 +801,17 @@ export default function App() {
             </span>
           </a>
           <div className="flex items-center gap-2 text-xs text-stone-500">
+            {authConfigured && session && (
+              <button
+                type="button"
+                className="icon-button sign-out-button"
+                aria-label="Sign out"
+                title="Sign out — this will end your current session"
+                onClick={handleSignOut}
+              >
+                <Icon name="logout" />
+              </button>
+            )}
             <button
               type="button"
               className="icon-button"

@@ -36,8 +36,9 @@ router.post(
         });
       }
 
-      await fs.mkdir(documentsPath, { recursive: true });
-      const existingDocuments = (await fs.readdir(documentsPath)).map(
+      const ownerPath = path.join(documentsPath, req.user.id);
+      await fs.mkdir(ownerPath, { recursive: true });
+      const existingDocuments = (await fs.readdir(ownerPath)).map(
         (fileName) => fileName.toLowerCase(),
       );
 
@@ -50,12 +51,21 @@ router.post(
           });
         }
 
-        await fs.writeFile(path.join(documentsPath, fileName), file.buffer);
+        await fs.writeFile(path.join(ownerPath, fileName), file.buffer);
         savedFileNames.push(fileName);
         existingDocuments.push(fileName);
-        const chunks = await ingestDocument(fileName);
+        const chunks = await ingestDocument(fileName, req.user.id);
         indexedFileNames.push(fileName);
         uploadedDocuments.push({ fileName, chunks });
+        const { error: documentError } = await supabase
+          .from("user_documents")
+          .insert({
+            user_id: req.user.id,
+            file_name: fileName,
+            storage_path: path.join(req.user.id, fileName),
+            chunk_count: chunks,
+          });
+        if (documentError) throw documentError;
       }
 
       res.status(201).json({
@@ -66,14 +76,14 @@ router.post(
       console.error(err);
 
       for (const fileName of savedFileNames) {
-        await fs.rm(path.join(documentsPath, fileName), { force: true });
+        await fs.rm(path.join(documentsPath, req.user.id, fileName), { force: true });
       }
 
       for (const fileName of indexedFileNames) {
         await supabase
           .from("documents")
           .delete()
-          .contains("metadata", { source: fileName });
+          .contains("metadata", { source: fileName, owner_user_id: req.user.id });
       }
 
       res.status(500).json({ error: "Could not upload the document." });
@@ -81,9 +91,10 @@ router.post(
   },
 );
 
-router.get("/", createRateLimiter(20), async (_req, res) => {
+router.get("/", createRateLimiter(20), async (req, res) => {
   try {
-    const documents = await fs.readdir(documentsPath);
+    const ownerPath = path.join(documentsPath, req.user.id);
+    const documents = await fs.readdir(ownerPath);
 
     res.json({
       count: documents.length,
@@ -107,17 +118,23 @@ router.delete("/:fileName", createRateLimiter(10), async (req, res) => {
     }
     const name = paramsResult.data.fileName.toLocaleLowerCase();
     const fileName = path.basename(name);
-    const filePath = path.join(documentsPath, fileName);
+    const filePath = path.join(documentsPath, req.user.id, fileName);
     await fs.unlink(filePath);
 
     const { error } = await supabase
       .from("documents")
       .delete()
-      .contains("metadata", { source: fileName });
+      .contains("metadata", { source: fileName, owner_user_id: req.user.id });
 
     if (error) {
       throw error;
     }
+    const { error: documentError } = await supabase
+      .from("user_documents")
+      .delete()
+      .eq("user_id", req.user.id)
+      .eq("file_name", fileName);
+    if (documentError) throw documentError;
 
     res.json({ message: "Document deleted successfully!", fileName });
   } catch (err) {

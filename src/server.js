@@ -3,13 +3,14 @@ import { PORT } from "./utils/env.js";
 import chatRouter from "./controllers/chat.js";
 import documentsRouter from "./controllers/documents.js";
 import { corsOptions } from "./utils/cors.js";
+import { requireAuth } from "./utils/auth.js";
 
 const app = express();
 
 app.use(corsOptions);
 app.use(express.json());
-app.use("/documents", documentsRouter);
-app.use("/chat", chatRouter);
+app.use("/documents", requireAuth, documentsRouter);
+app.use("/chat", requireAuth, chatRouter);
 
 app.listen(PORT, () => {
   console.log(`Server is running on port http://localhost:${PORT}`);

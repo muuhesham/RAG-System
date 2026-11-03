@@ -6,9 +6,11 @@ import { listDocuments, sendQuestion } from "../../client/src/api.js";
 vi.mock("../../client/src/api.js", () => ({
   clearConversation: vi.fn().mockResolvedValue({ message: "Cleared." }),
   deleteDocument: vi.fn().mockResolvedValue({ message: "Deleted." }),
+  getConversationHistory: vi.fn().mockResolvedValue({ messages: [] }),
   listDocuments: vi.fn(),
   sendQuestion: vi.fn(),
   uploadDocuments: vi.fn().mockResolvedValue({ message: "Uploaded." }),
+  setAccessToken: vi.fn(),
 }));
 
 describe("App UI", () => {

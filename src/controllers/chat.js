@@ -16,6 +16,8 @@ import { createRateLimiter } from "../utils/rate-limit.js";
 import {
   deleteSessionHistory,
   getSessionHistory,
+  listSessionMessages,
+  saveChatMessages,
 } from "../utils/conversation-memory.js";
 
 const router = express.Router();
@@ -31,10 +33,35 @@ const vectorStore = new SupabaseVectorStore(embeddings, {
   queryName: "match_documents",
 });
 
+router.get(
+  "/history/:sessionId",
+  createRateLimiter(20),
+  async (req, res) => {
+    const paramsResult = sessionIdParamsSchema.safeParse(req.params);
+    if (!paramsResult.success) {
+      return res.status(400).json({ message: "Please provide a valid sessionId." });
+    }
+
+    try {
+      const messages = await listSessionMessages(req.user.id, paramsResult.data.sessionId);
+      res.json({
+        messages: messages.map((message) => ({
+          role: message.role,
+          text: message.content,
+          ...(message.metadata ?? {}),
+        })),
+      });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Could not load conversation history." });
+    }
+  },
+);
+
 router.delete(
   "/history/:sessionId",
   createRateLimiter(5),
-  (req, res) => {
+  async (req, res) => {
     const paramsResult = sessionIdParamsSchema.safeParse(req.params);
     if (!paramsResult.success) {
       return res.status(400).json({
@@ -43,7 +70,7 @@ router.delete(
     }
 
     const { sessionId } = paramsResult.data;
-    if (!deleteSessionHistory(sessionId)) {
+    if (!(await deleteSessionHistory(req.user.id, sessionId))) {
       return res.status(404).json({
         message: "Conversation history not found.",
       });
@@ -69,8 +96,7 @@ router.post("/", createRateLimiter(5), async (req, res) => {
     }
 
     const { question, sessionId } = bodyResult.data;
-    const historyStore = getSessionHistory(sessionId);
-    const allMessages = await historyStore.getMessages();
+    const allMessages = await getSessionHistory(req.user.id, sessionId);
     const chatHistory = allMessages.slice(-6);
     // const rewriteMessage = await transformationPrompt.invoke({
     //   chatHistory,
@@ -82,6 +108,7 @@ router.post("/", createRateLimiter(5), async (req, res) => {
     const relevantDocs = await vectorStore.similaritySearch(
       question,
       2,
+      { filter: { owner_user_id: req.user.id } },
     );
     const context = relevantDocs
       .map((doc) => doc.pageContent.trim())
@@ -106,15 +133,12 @@ router.post("/", createRateLimiter(5), async (req, res) => {
       sources: response.answeredFromContext ? uniqueDocs : [],
     });
 
-    await Promise.all([
-      historyStore.addUserMessage(question),
-      historyStore.addAIMessage(answer),
-    ]);
-    const updatedMessages = await historyStore.getMessages();
-    if (updatedMessages.length > 10) {
-      await historyStore.clear();
-      await historyStore.addMessages(updatedMessages.slice(-6));
-    }
+    await saveChatMessages(req.user.id, sessionId, question, answer, {
+      confidence: response.confidence,
+      keyPoints: response.keyPoints,
+      suggestedQuestions: response.suggestedQuestions,
+      sources: response.answeredFromContext ? uniqueDocs : [],
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({
