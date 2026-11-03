@@ -20,8 +20,8 @@ const textSplitter = new RecursiveCharacterTextSplitter({
   chunkOverlap: 15,
 });
 
-export async function ingestDocument(fileName) {
-  const filePath = path.join(documentsPath, fileName);
+export async function ingestDocument(fileName, ownerId) {
+  const filePath = path.join(documentsPath, ownerId, fileName);
   const extension = path.extname(fileName).toLowerCase();
   let docs;
 
@@ -35,6 +35,7 @@ export async function ingestDocument(fileName) {
         metadata: {
           ...document.metadata,
           source: fileName,
+          owner_user_id: ownerId,
         },
       })),
     );
@@ -42,7 +43,7 @@ export async function ingestDocument(fileName) {
     const document = await fs.readFile(filePath, "utf-8");
     docs = await textSplitter.createDocuments(
       [document],
-      [{ source: fileName }],
+      [{ source: fileName, owner_user_id: ownerId }],
     );
   } else {
     throw new Error(`Unsupported document type: ${extension}`);

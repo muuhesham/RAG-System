@@ -1,42 +1,59 @@
-import { InMemoryChatMessageHistory } from "@langchain/core/chat_history";
+import { SUPABASE_SECRET_KEY, SUPABASE_URL } from "./env.js";
+import { supabaseClient } from "./db.js";
+import { AIMessage, HumanMessage } from "@langchain/core/messages";
 
-const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
-const MAX_SESSIONS = 1000;
+const supabase = supabaseClient(SUPABASE_URL, SUPABASE_SECRET_KEY);
 
-const historySessions = new Map();
+export async function getSessionHistory(userId, sessionId) {
+  const { data, error } = await supabase
+    .from("chat_messages")
+    .select("role, content, metadata, created_at")
+    .eq("user_id", userId)
+    .eq("session_id", sessionId)
+    .order("created_at", { ascending: true });
 
-function removeExpiredSessions() {
-  const now = Date.now();
+  if (error) throw error;
 
-  for (const [sessionId, session] of historySessions) {
-    if (now - session.lastAccessedAt >= SESSION_TTL_MS) {
-      historySessions.delete(sessionId);
-    }
-  }
+  return (data ?? []).slice(-10).map((message) =>
+    message.role === "assistant"
+      ? new AIMessage({ content: message.content })
+      : new HumanMessage({ content: message.content }),
+  );
 }
 
-export function getSessionHistory(sessionId) {
-  removeExpiredSessions();
-
-  let session = historySessions.get(sessionId);
-  if (!session) {
-    session = {
-      history: new InMemoryChatMessageHistory(),
-      lastAccessedAt: Date.now(),
-    };
-  }
-
-  session.lastAccessedAt = Date.now();
-  historySessions.delete(sessionId);
-  historySessions.set(sessionId, session);
-
-  while (historySessions.size > MAX_SESSIONS) {
-    historySessions.delete(historySessions.keys().next().value);
-  }
-
-  return session.history;
+export async function saveChatMessages(userId, sessionId, question, answer, metadata = {}) {
+  const { error } = await supabase.from("chat_messages").insert([
+    { user_id: userId, session_id: sessionId, role: "user", content: question },
+    {
+      user_id: userId,
+      session_id: sessionId,
+      role: "assistant",
+      content: answer,
+      metadata,
+    },
+  ]);
+  if (error) throw error;
 }
 
-export function deleteSessionHistory(sessionId) {
-  return historySessions.delete(sessionId);
+export async function listSessionMessages(userId, sessionId) {
+  const { data, error } = await supabase
+    .from("chat_messages")
+    .select("role, content, metadata, created_at")
+    .eq("user_id", userId)
+    .eq("session_id", sessionId)
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function deleteSessionHistory(userId, sessionId) {
+  const { error, count } = await supabase
+    .from("chat_messages")
+    .delete({ count: "exact" })
+    .eq("user_id", userId)
+    .eq("session_id", sessionId);
+
+  if (error) throw error;
+  return (count ?? 0) > 0;
 }
