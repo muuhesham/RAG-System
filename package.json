@@ -3,14 +3,13 @@
   "version": "1.0.0",
   "main": "src/server.js",
   "scripts": {
-    "dev": "nodemon src/server.js",
     "dev:backend": "nodemon src/server.js",
     "dev:frontend": "vite --config client/vite.config.js",
     "build:backend": "node src/server.js",
     "build:frontend": "vite build --config client/vite.config.js",
     "test": "npm run test:backend && npm run test:frontend",
-    "test:backend": "vitest run --config testing/vitest.backend.config.js",
-    "test:frontend": "vitest run --config testing/vitest.frontend.config.js",
+    "test:backend": "vitest run --config tests/vitest.backend.config.js",
+    "test:frontend": "vitest run --config tests/vitest.frontend.config.js",
     "test:watch": "vitest"
   },
   "type": "module",

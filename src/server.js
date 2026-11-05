@@ -1,9 +1,9 @@
 import express from "express";
-import { PORT } from "./utils/env.js";
-import chatRouter from "./controllers/chat.js";
-import documentsRouter from "./controllers/documents.js";
-import { corsOptions } from "./utils/cors.js";
-import { requireAuth } from "./utils/auth.js";
+import { PORT } from "./config/env.js";
+import chatRouter from "./api/chat.js";
+import documentsRouter from "./api/documents.js";
+import { corsOptions } from "./config/cors.js";
+import { requireAuth } from "./middlewares/auth.js";
 import Logger from "./logs/logs.js";
 
 const app = express();

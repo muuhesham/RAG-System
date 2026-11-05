@@ -1,24 +1,19 @@
-import { SUPABASE_URL, SUPABASE_SECRET_KEY } from "./utils/env.js";
-import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
+import { SUPABASE_URL, SUPABASE_SECRET_KEY } from "../config/env.js";
 import { SupabaseVectorStore } from "@langchain/community/vectorstores/supabase";
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
-import { supabaseClient } from "./utils/db.js";
-import { embedding } from "./utils/embedding.js";
+import { supabaseClient } from "../config/db.js";
+import { embedding } from "../embeddings/embedding.js";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { textSplitter } from "../chunking/chunker.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-export const documentsPath = path.join(__dirname, "documents");
+export const documentsPath = path.join(__dirname, "../documents");
 
 const supabase = supabaseClient(SUPABASE_URL, SUPABASE_SECRET_KEY);
 const embeddings = embedding();
-
-const textSplitter = new RecursiveCharacterTextSplitter({
-  chunkSize: 300,
-  chunkOverlap: 15,
-});
 
 export async function ingestDocument(fileName, ownerId) {
   const filePath = path.join(documentsPath, ownerId, fileName);

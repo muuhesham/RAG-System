@@ -1,5 +1,5 @@
-import { SUPABASE_SECRET_KEY, SUPABASE_URL } from "./env.js";
-import { supabaseClient } from "./db.js";
+import { SUPABASE_SECRET_KEY, SUPABASE_URL } from "../config/env.js";
+import { supabaseClient } from "../config/db.js";
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 
 const supabase = supabaseClient(SUPABASE_URL, SUPABASE_SECRET_KEY);
@@ -14,14 +14,22 @@ export async function getSessionHistory(userId, sessionId) {
 
   if (error) throw error;
 
-  return (data ?? []).slice(-10).map((message) =>
-    message.role === "assistant"
-      ? new AIMessage({ content: message.content })
-      : new HumanMessage({ content: message.content }),
-  );
+  return (data ?? [])
+    .slice(-10)
+    .map((message) =>
+      message.role === "assistant"
+        ? new AIMessage({ content: message.content })
+        : new HumanMessage({ content: message.content }),
+    );
 }
 
-export async function saveChatMessages(userId, sessionId, question, answer, metadata = {}) {
+export async function saveChatMessages(
+  userId,
+  sessionId,
+  question,
+  answer,
+  metadata = {},
+) {
   const { error } = await supabase.from("chat_messages").insert([
     { user_id: userId, session_id: sessionId, role: "user", content: question },
     {

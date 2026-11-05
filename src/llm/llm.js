@@ -1,6 +1,6 @@
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { InMemoryCache } from "@langchain/core/caches";
-import { AI_API_KEY } from "./env.js";
+import { AI_API_KEY } from "../config/env.js";
 
 const modelCache = new InMemoryCache();
 

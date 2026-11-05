@@ -1,9 +1,9 @@
 import express from "express";
-import { SUPABASE_SECRET_KEY, SUPABASE_URL } from "../utils/env.js";
-import { supabaseClient } from "../utils/db.js";
-import { documentsPath, ingestDocument } from "../splitter.js";
-import { upload } from "../utils/multer.js";
-import { createRateLimiter } from "../utils/rate-limit.js";
+import { SUPABASE_SECRET_KEY, SUPABASE_URL } from "../config/env.js";
+import { supabaseClient } from "../config/db.js";
+import { documentsPath, ingestDocument } from "../ingestion/splitter.js";
+import { upload } from "../config/multer.js";
+import { createRateLimiter } from "../middlewares/rate-limit.js";
 import {
   documentNameParamsSchema,
   uploadedDocumentsSchema,

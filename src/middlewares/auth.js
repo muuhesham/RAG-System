@@ -1,5 +1,5 @@
-import { SUPABASE_SECRET_KEY, SUPABASE_URL } from "./env.js";
-import { supabaseClient } from "./db.js";
+import { SUPABASE_SECRET_KEY, SUPABASE_URL } from "../config/env.js";
+import { supabaseClient } from "../config/db.js";
 
 const supabase = supabaseClient(SUPABASE_URL, SUPABASE_SECRET_KEY);
 
@@ -15,7 +15,8 @@ export async function requireAuth(req, res, next) {
     const { data, error } = await supabase.auth.getUser(match[1]);
     if (error || !data.user) {
       return res.status(401).json({
-        message: "Your session has expired. Signing out now; please sign in again.",
+        message:
+          "Your session has expired. Signing out now; please sign in again.",
       });
     }
 

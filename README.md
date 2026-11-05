@@ -1,4 +1,4 @@
-<div align="center">
+﻿<div align="center">
 
 # RAG System
 
@@ -90,7 +90,7 @@ VITE_API_URL=
 
 ### 3. Prepare Supabase
 
-Run the migrations in `supabase/migrations` from the Supabase SQL Editor.
+Run the migrations in `src/vectordb/migrations` from the Supabase SQL Editor.
 They enable the `vector` extension and create the vector document table and
 `match_documents` function automatically. The included SQL creates embeddings
 as `vector(3072)`, which matches the application's default
@@ -111,7 +111,7 @@ dimensions in the same table.
 
 ### User data migration
 
-Apply `supabase/migrations/20261103120000_user_documents_and_chat.sql`
+Apply `src/vectordb/migrations/20261103120000_user_documents_and_chat.sql`
 in the Supabase SQL Editor. It also enables the `pgvector` extension, creates
 the `documents` table and `match_documents` similarity function, creates the
 per-user chat and document registry tables, and enables Row Level Security.
@@ -187,11 +187,22 @@ client/                 React application and Vite configuration
     main.jsx            React entry point
     style.css           Application styles
 src/
-  controllers/               Chat and document API controllers
-  utils/                AI, prompts, Supabase, uploads, and session helpers
-  documents/            Uploaded source files
+  api/                  Chat and document routes
+  chunking/             Text splitter configuration
+  config/               Environment, database, CORS, and upload configuration
+  documents/            User-uploaded source files
+  embeddings/           Embedding model configuration
+  ingestion/            Document loading, chunking, and indexing
+  llm/                  Language model configuration
+  logs/                 Terminal and file request logging
+  middlewares/          Authentication and rate limiting
+  prompts/              LangChain prompt templates
+  retrieval/            Supabase vector-store configuration
+  utils/                Validation and conversation-history helpers
+  vectordb/
+    migrations/         Supabase and pgvector SQL migrations
   server.js             Express server entry point
-  splitter.js           Document loading, splitting, and indexing
+tests/                  Backend and frontend Vitest suites
 .env.example            Backend environment variable template
 package.json            Dependencies and development scripts
 ```
@@ -203,7 +214,7 @@ package.json            Dependencies and development scripts
 - The chat response uses up to two relevant document chunks and limits the provided context to reduce model input tokens.
 - LLM responses are cached in memory when the same request and prompt are repeated during the backend process lifetime.
 - The UI uses separate user and chatbot icons, supports light and dark themes, and adapts the conversation and document panels for desktop and mobile screens.
-- Backend conversation history is held in memory: up to 10 messages per session, a 24-hour inactivity expiry, and 1,000 sessions maximum. Restarting the backend clears it.
+- Backend conversation history is stored in Supabase and loaded for each authenticated user session.
 - The browser stores its session ID and up to 10 displayed messages in `localStorage`. Clearing the browser's site data starts a new browser session.
 - In production, set `FRONTEND_URL` to the deployed frontend origin. If frontend and backend are on different origins, set `VITE_API_URL` before building the frontend.
 

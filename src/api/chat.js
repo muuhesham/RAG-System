@@ -1,18 +1,15 @@
 import express from "express";
-import { SUPABASE_SECRET_KEY, SUPABASE_URL } from "../utils/env.js";
-import { llm } from "../utils/llm.js";
-import { supabaseClient } from "../utils/db.js";
-import { embedding } from "../utils/embedding.js";
-import { SupabaseVectorStore } from "@langchain/community/vectorstores/supabase";
-import { responsePrompt } from "../utils/prompts/responsePrompt.js";
-// import { transformationPrompt } from "../utils/prompts/transformationPrompt.js";
+import { llm } from "../llm/llm.js";
+import { responsePrompt } from "../prompts/responsePrompt.js";
+import { vectorStore } from "../retrieval/vector-store.js";
+// import { transformationPrompt } from "../prompts/transformationPrompt.js";
 import {
   answerSchema,
   chatRequestSchema,
   correctedQuestionSchema,
   sessionIdParamsSchema,
 } from "../utils/validation.js";
-import { createRateLimiter } from "../utils/rate-limit.js";
+import { createRateLimiter } from "../middlewares/rate-limit.js";
 import {
   deleteSessionHistory,
   getSessionHistory,
@@ -21,64 +18,53 @@ import {
 } from "../utils/conversation-memory.js";
 
 const router = express.Router();
-const supabase = supabaseClient(SUPABASE_URL, SUPABASE_SECRET_KEY);
-const embeddings = embedding();
 // const structuredTransformationLlm =
 //   llm.withStructuredOutput(correctedQuestionSchema);
 const structuredAnswerLlm = llm.withStructuredOutput(answerSchema);
 
-const vectorStore = new SupabaseVectorStore(embeddings, {
-  client: supabase,
-  tableName: "documents",
-  queryName: "match_documents",
+router.get("/history/:sessionId", createRateLimiter(20), async (req, res) => {
+  const paramsResult = sessionIdParamsSchema.safeParse(req.params);
+  if (!paramsResult.success) {
+    return res
+      .status(400)
+      .json({ message: "Please provide a valid sessionId." });
+  }
+
+  try {
+    const messages = await listSessionMessages(
+      req.user.id,
+      paramsResult.data.sessionId,
+    );
+    res.json({
+      messages: messages.map((message) => ({
+        role: message.role,
+        text: message.content,
+        ...(message.metadata ?? {}),
+      })),
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Could not load conversation history." });
+  }
 });
 
-router.get(
-  "/history/:sessionId",
-  createRateLimiter(20),
-  async (req, res) => {
-    const paramsResult = sessionIdParamsSchema.safeParse(req.params);
-    if (!paramsResult.success) {
-      return res.status(400).json({ message: "Please provide a valid sessionId." });
-    }
+router.delete("/history/:sessionId", createRateLimiter(5), async (req, res) => {
+  const paramsResult = sessionIdParamsSchema.safeParse(req.params);
+  if (!paramsResult.success) {
+    return res.status(400).json({
+      message: "Please provide a valid sessionId.",
+    });
+  }
 
-    try {
-      const messages = await listSessionMessages(req.user.id, paramsResult.data.sessionId);
-      res.json({
-        messages: messages.map((message) => ({
-          role: message.role,
-          text: message.content,
-          ...(message.metadata ?? {}),
-        })),
-      });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: "Could not load conversation history." });
-    }
-  },
-);
+  const { sessionId } = paramsResult.data;
+  if (!(await deleteSessionHistory(req.user.id, sessionId))) {
+    return res.status(404).json({
+      message: "Conversation history not found.",
+    });
+  }
 
-router.delete(
-  "/history/:sessionId",
-  createRateLimiter(5),
-  async (req, res) => {
-    const paramsResult = sessionIdParamsSchema.safeParse(req.params);
-    if (!paramsResult.success) {
-      return res.status(400).json({
-        message: "Please provide a valid sessionId.",
-      });
-    }
-
-    const { sessionId } = paramsResult.data;
-    if (!(await deleteSessionHistory(req.user.id, sessionId))) {
-      return res.status(404).json({
-        message: "Conversation history not found.",
-      });
-    }
-
-    res.json({ message: "Conversation history deleted successfully." });
-  },
-);
+  res.json({ message: "Conversation history deleted successfully." });
+});
 
 router.post("/", createRateLimiter(5), async (req, res) => {
   try {
@@ -105,11 +91,9 @@ router.post("/", createRateLimiter(5), async (req, res) => {
     // const rewriteResponse =
     //   await structuredTransformationLlm.invoke(rewriteMessage);
     // const transformationQuestion = rewriteResponse.correctedQuestion;
-    const relevantDocs = await vectorStore.similaritySearch(
-      question,
-      2,
-      { filter: { owner_user_id: req.user.id } },
-    );
+    const relevantDocs = await vectorStore.similaritySearch(question, 2, {
+      filter: { owner_user_id: req.user.id },
+    });
     const context = relevantDocs
       .map((doc) => doc.pageContent.trim())
       .join("\n\n")

@@ -1,5 +1,5 @@
 import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
-import { AI_API_KEY } from "./env.js";
+import { AI_API_KEY } from "../config/env.js";
 
 export const embedding = () => {
   return new GoogleGenerativeAIEmbeddings({
