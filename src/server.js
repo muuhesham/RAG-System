@@ -4,11 +4,13 @@ import chatRouter from "./controllers/chat.js";
 import documentsRouter from "./controllers/documents.js";
 import { corsOptions } from "./utils/cors.js";
 import { requireAuth } from "./utils/auth.js";
+import Logger from "./logs/logs.js";
 
 const app = express();
 
 app.use(corsOptions);
 app.use(express.json());
+app.use(Logger);
 app.use("/documents", requireAuth, documentsRouter);
 app.use("/chat", requireAuth, chatRouter);
 

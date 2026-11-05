@@ -4,3 +4,4 @@ dist/
 client/dist/
 .vscode/
 src/documents/
+src/logs/*.log
