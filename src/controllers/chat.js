@@ -1,11 +1,8 @@
 import express from "express";
-import { SUPABASE_SECRET_KEY, SUPABASE_URL } from "../utils/env.js";
-import { llm } from "../utils/llm.js";
-import { supabaseClient } from "../utils/db.js";
-import { embedding } from "../utils/embedding.js";
-import { SupabaseVectorStore } from "@langchain/community/vectorstores/supabase";
-import { responsePrompt } from "../utils/prompts/responsePrompt.js";
-// import { transformationPrompt } from "../utils/prompts/transformationPrompt.js";
+import { llm } from "../llm/llm.js";
+import { responsePrompt } from "../prompts/responsePrompt.js";
+import { vectorStore } from "../retrieval/vector-store.js";
+import { transformationPrompt } from "../prompts/transformationPrompt.js";
 import {
   answerSchema,
   chatRequestSchema,
@@ -19,10 +16,8 @@ import {
 } from "../utils/conversation-memory.js";
 
 const router = express.Router();
-const supabase = supabaseClient(SUPABASE_URL, SUPABASE_SECRET_KEY);
-const embeddings = embedding();
-// const structuredTransformationLlm =
-//   llm.withStructuredOutput(correctedQuestionSchema);
+const structuredTransformationLlm =
+  llm.withStructuredOutput(correctedQuestionSchema);
 const structuredAnswerLlm = llm.withStructuredOutput(answerSchema);
 
 const vectorStore = new SupabaseVectorStore(embeddings, {
@@ -72,17 +67,18 @@ router.post("/", createRateLimiter(5), async (req, res) => {
     const historyStore = getSessionHistory(sessionId);
     const allMessages = await historyStore.getMessages();
     const chatHistory = allMessages.slice(-6);
-    // const rewriteMessage = await transformationPrompt.invoke({
-    //   chatHistory,
-    //   question,
-    // });
-    // const rewriteResponse =
-    //   await structuredTransformationLlm.invoke(rewriteMessage);
-    // const transformationQuestion = rewriteResponse.correctedQuestion;
-    const relevantDocs = await vectorStore.similaritySearch(
+    const rewriteMessage = await transformationPrompt.invoke({
+      chatHistory,
       question,
-      2,
-    );
+    });
+    const rewriteResponse =
+      await structuredTransformationLlm.invoke(rewriteMessage);
+    const searchQuery = rewriteResponse.correctedQuestion;
+    console.log("Search query:", searchQuery);
+
+    const relevantDocs = await vectorStore.similaritySearch(searchQuery, 4, {
+      owner_user_id: req.user.id,
+    });
     const context = relevantDocs
       .map((doc) => doc.pageContent.trim())
       .join("\n\n")
@@ -98,6 +94,13 @@ router.post("/", createRateLimiter(5), async (req, res) => {
       ...new Set(relevantDocs.map((doc) => doc.metadata.source)),
     ];
 
+    await saveChatMessages(req.user.id, sessionId, question, answer, {
+      confidence: response.confidence,
+      keyPoints: response.keyPoints,
+      suggestedQuestions: response.suggestedQuestions,
+      sources: response.answeredFromContext ? uniqueDocs : [],
+    });
+
     res.json({
       answer,
       confidence: response.confidence,
@@ -105,16 +108,6 @@ router.post("/", createRateLimiter(5), async (req, res) => {
       suggestedQuestions: response.suggestedQuestions,
       sources: response.answeredFromContext ? uniqueDocs : [],
     });
-
-    await Promise.all([
-      historyStore.addUserMessage(question),
-      historyStore.addAIMessage(answer),
-    ]);
-    const updatedMessages = await historyStore.getMessages();
-    if (updatedMessages.length > 10) {
-      await historyStore.clear();
-      await historyStore.addMessages(updatedMessages.slice(-6));
-    }
   } catch (err) {
     console.error(err);
     res.status(500).json({
