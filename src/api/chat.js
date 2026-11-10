@@ -91,8 +91,8 @@ router.post("/", createRateLimiter(5), async (req, res) => {
     // const rewriteResponse =
     //   await structuredTransformationLlm.invoke(rewriteMessage);
     // const transformationQuestion = rewriteResponse.correctedQuestion;
-    const relevantDocs = await vectorStore.similaritySearch(question, 2, {
-      filter: { owner_user_id: req.user.id },
+    const relevantDocs = await vectorStore.similaritySearch(question, 4, {
+      owner_user_id: req.user.id,
     });
     const context = relevantDocs
       .map((doc) => doc.pageContent.trim())
@@ -106,7 +106,7 @@ router.post("/", createRateLimiter(5), async (req, res) => {
     const response = await structuredAnswerLlm.invoke(messages);
     const answer = response.answer;
     const uniqueDocs = [
-      ...new Set(relevantDocs.map((doc) => doc.metadata.source)),
+      ...new Set(relevantDocs.map((doc) => doc.metadata?.source)),
     ];
 
     res.json({
