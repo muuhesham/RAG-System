@@ -31,7 +31,7 @@ export async function saveChatMessages(
   metadata = {},
 ) {
   const { error } = await supabase.from("chat_messages").insert([
-    { user_id: userId, session_id: sessionId, role: "user", content: question, metadat: {} },
+    { user_id: userId, session_id: sessionId, role: "user", content: question, metadata: {} },
     {
       user_id: userId,
       session_id: sessionId,
